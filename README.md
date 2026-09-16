@@ -34,8 +34,8 @@ cd mailer
 cp .env.example .env
 # renseigner au minimum OPENAI_API_KEY (et un provider mail / MAILSERVER_*)
 
-cd backend && npm ci
-cd ../admin && npm ci
+cd backend && npm install
+cd ../admin && npm install
 ```
 
 Deux terminaux :
