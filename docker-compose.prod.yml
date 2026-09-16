@@ -1,0 +1,124 @@
+# Mailer — production on mailing.aito-flow.com
+# Usage:
+#   cp .env.prod.example .env.prod   # fill secrets
+#   ./scripts/deploy.sh
+# Or from this machine: ./scripts/deploy-to-prod.sh
+
+name: mailer
+
+services:
+  mailserver:
+    build:
+      context: ./mailserver
+      dockerfile: Dockerfile
+    container_name: mailer-mailserver
+    restart: unless-stopped
+    env_file:
+      - .env.prod
+    environment:
+      PORT: 3000
+      API_KEY: ${MAILSERVER_API_KEY:?MAILSERVER_API_KEY is required}
+      SMTP_HOST: ${SMTP_HOST:?SMTP_HOST is required}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+    networks:
+      - mailer-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 10s
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: mailer-backend
+    restart: unless-stopped
+    env_file:
+      - .env.prod
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_PATH: /app/data/mailer.sqlite
+      PUBLIC_URL: ${PUBLIC_URL:-https://mailing.aito-flow.com}
+      MAILSERVER_URL: http://mailserver:3000
+      MAILSERVER_API_KEY: ${MAILSERVER_API_KEY:?MAILSERVER_API_KEY is required}
+      SEND_DELAY_MS: ${SEND_DELAY_MS:-30000}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+    volumes:
+      - mailer_sqlite:/app/data
+    depends_on:
+      mailserver:
+        condition: service_healthy
+    networks:
+      - mailer-network
+      - traefik-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=n8n_default"
+      - "traefik.http.routers.mailer-api.rule=Host(`${TRAEFIK_WEB_HOST:-mailing.aito-flow.com}`) && (PathPrefix(`/api`) || PathPrefix(`/t/`) || PathPrefix(`/u/`))"
+      - "traefik.http.routers.mailer-api.priority=100"
+      - "traefik.http.routers.mailer-api.entrypoints=websecure"
+      - "traefik.http.routers.mailer-api.tls.certresolver=mytlschallenge"
+      - "traefik.http.services.mailer-api.loadbalancer.server.port=3001"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3001/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 25s
+
+  admin:
+    build:
+      context: .
+      dockerfile: admin/Dockerfile
+      args:
+        NUXT_PUBLIC_API_BASE: ${NUXT_PUBLIC_API_BASE:-https://mailing.aito-flow.com/api}
+        NUXT_PUBLIC_PRIMEUI_LICENSE: ${NUXT_PUBLIC_PRIMEUI_LICENSE:-}
+    container_name: mailer-admin
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - mailer-network
+      - traefik-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=n8n_default"
+      - "traefik.http.routers.mailer-web.rule=Host(`${TRAEFIK_WEB_HOST:-mailing.aito-flow.com}`)"
+      - "traefik.http.routers.mailer-web.priority=10"
+      - "traefik.http.routers.mailer-web.entrypoints=websecure"
+      - "traefik.http.routers.mailer-web.tls.certresolver=mytlschallenge"
+      - "traefik.http.services.mailer-web.loadbalancer.server.port=3000"
+
+volumes:
+  mailer_sqlite:
+
+networks:
+  mailer-network:
+    driver: bridge
+  traefik-network:
+    external: true
+    name: n8n_default

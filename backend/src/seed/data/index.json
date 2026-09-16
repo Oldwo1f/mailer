@@ -1,0 +1,37 @@
+[
+  {
+    "slug": "nightlife",
+    "name": "Nightlife",
+    "description": "Prospects Nightlife — Polynésie française",
+    "file": "nightlife.json",
+    "count": 1
+  },
+  {
+    "slug": "beaute",
+    "name": "Beauté",
+    "description": "Prospects Beauté — Polynésie française",
+    "file": "beaute.json",
+    "count": 4
+  },
+  {
+    "slug": "restaurants",
+    "name": "Restaurants",
+    "description": "Prospects Restaurants — Polynésie française",
+    "file": "restaurants.json",
+    "count": 39
+  },
+  {
+    "slug": "artisans",
+    "name": "Artisans",
+    "description": "Prospects Artisans — Polynésie française",
+    "file": "artisans.json",
+    "count": 45
+  },
+  {
+    "slug": "hebergements",
+    "name": "Hébergements",
+    "description": "Prospects Hébergements — Polynésie française",
+    "file": "hebergements.json",
+    "count": 248
+  }
+]

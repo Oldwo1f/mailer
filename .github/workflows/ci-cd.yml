@@ -1,0 +1,74 @@
+name: CI / CD
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: Test and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            admin/package-lock.json
+
+      - name: Backend tests and build
+        working-directory: backend
+        run: |
+          npm ci
+          npm test -- --passWithNoTests
+          npm run build
+
+      - name: Admin build
+        working-directory: admin
+        env:
+          NUXT_PUBLIC_API_BASE: http://localhost:3001/api
+        run: |
+          npm ci
+          npm run build
+
+  deploy:
+    name: Deploy production
+    needs: ci
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          test -n "$DEPLOY_SSH_KEY" || { echo "Missing secret DEPLOY_SSH_KEY"; exit 1; }
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printenv DEPLOY_SSH_KEY > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H 185.211.4.81 >> ~/.ssh/known_hosts
+
+      - name: Deploy to VPS
+        env:
+          SKIP_ENV_SYNC: "1"
+        run: |
+          chmod +x scripts/deploy-to-prod.sh scripts/deploy.sh
+          ./scripts/deploy-to-prod.sh
