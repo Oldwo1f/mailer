@@ -34,6 +34,20 @@ export class DiscoveryJob {
   @Column({ type: 'int' })
   batchSize: number;
 
+  /** `manual` or `aurel-acquisition`. */
+  @Column({ type: 'varchar', default: 'manual' })
+  source: string;
+
+  /** Stable strategy key used to avoid hammering the same segment. */
+  @Column({ type: 'varchar', nullable: true })
+  missionKey: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  targetProductId: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  targetActivity: string | null;
+
   @Column({ default: 0 })
   found: number;
 
@@ -57,6 +71,10 @@ export class DiscoveryJob {
 
   @Column({ type: 'simple-json', nullable: true })
   results: DiscoverJobResults | null;
+
+  /** Once set, Product Matcher/market post-processing has already run. */
+  @Column({ type: 'datetime', nullable: true })
+  autopilotProcessedAt: Date | null;
 
   @CreateDateColumn()
   createdAt: Date;
