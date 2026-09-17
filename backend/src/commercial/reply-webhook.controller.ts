@@ -10,6 +10,7 @@ import { IsEmail, IsISO8601, IsOptional, IsString } from 'class-validator';
 import { createHash, timingSafeEqual } from 'crypto';
 import { Public } from '../auth/public.decorator';
 import { CommercialPipelineService } from './commercial-pipeline.service';
+import { AurelMeetingService } from './aurel-meeting.service';
 
 class InboundReplyDto {
   @IsEmail()
@@ -40,11 +41,14 @@ class InboundReplyDto {
 
 @Controller('replies')
 export class ReplyWebhookController {
-  constructor(private readonly pipeline: CommercialPipelineService) {}
+  constructor(
+    private readonly pipeline: CommercialPipelineService,
+    private readonly meetings: AurelMeetingService,
+  ) {}
 
   @Public()
   @Post('inbound')
-  ingest(
+  async ingest(
     @Headers('x-reply-webhook-secret') suppliedSecret: string | undefined,
     @Body() dto: InboundReplyDto,
   ) {
@@ -58,7 +62,7 @@ export class ReplyWebhookController {
       throw new UnauthorizedException('Webhook non autorisé');
     }
 
-    return this.pipeline.recordInboundReply({
+    const result = await this.pipeline.recordInboundReply({
       fromEmail: dto.fromEmail,
       receivedAt: dto.receivedAt ? new Date(dto.receivedAt) : null,
       subject: dto.subject || null,
@@ -66,6 +70,18 @@ export class ReplyWebhookController {
       replyToMessageId: dto.replyToMessageId || null,
       messageId: dto.messageId || null,
     });
+
+    if (!result.duplicate && result.matched) {
+      const meeting = await this.meetings.handle({
+        prospectId: result.prospectId,
+        intent: result.analysis?.intent || result.replyIntent || null,
+        fromEmail: dto.fromEmail,
+        subject: dto.subject || null,
+      });
+      return { ...result, meeting };
+    }
+
+    return result;
   }
 }
 
