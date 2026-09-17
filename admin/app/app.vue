@@ -55,6 +55,9 @@ async function logout() {
         <NuxtLink to="/pipeline" active-class="active">
           <i class="pi pi-chart-line" /> Pipeline commercial
         </NuxtLink>
+        <NuxtLink to="/performance" active-class="active">
+          <i class="pi pi-chart-bar" /> Performance produits
+        </NuxtLink>
         <NuxtLink to="/campaigns" active-class="active">
           <i class="pi pi-envelope" /> Campagnes
         </NuxtLink>
