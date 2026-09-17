@@ -58,6 +58,8 @@ import { CommercialPipelineService } from './commercial/commercial-pipeline.serv
 import { ProductMarketController } from './commercial/product-market.controller';
 import { ProductMarketService } from './commercial/product-market.service';
 import { AurelAutopilotService } from './commercial/aurel-autopilot.service';
+import { AcquisitionController } from './commercial/acquisition.controller';
+import { AurelAcquisitionService } from './commercial/aurel-acquisition.service';
 
 const entities = [
   Prospect,
@@ -100,6 +102,7 @@ const entities = [
     DemoPersonalizerController,
     CommercialPipelineController,
     ProductMarketController,
+    AcquisitionController,
     ReplyWebhookController,
     ListsController,
     CampaignsController,
@@ -135,6 +138,7 @@ const entities = [
     MailService,
     CampaignSendService,
     AurelAutopilotService,
+    AurelAcquisitionService,
     TrackingService,
     SendsService,
     DiscoverService,
