@@ -65,6 +65,10 @@ import { AurelJournalService } from './commercial/aurel-journal.service';
 import { AurelDeferredFollowUpService } from './commercial/aurel-deferred-followup.service';
 import { AurelReportService } from './commercial/aurel-report.service';
 import { AurelCommandController } from './commercial/aurel-command.controller';
+import { AurelOpsService } from './commercial/aurel-ops.service';
+import { AurelOpsController } from './commercial/aurel-ops.controller';
+import { AurelMeetingService } from './commercial/aurel-meeting.service';
+import { AurelHotPipelineService } from './commercial/aurel-hot-pipeline.service';
 
 const entities = [
   Prospect,
@@ -110,6 +114,7 @@ const entities = [
     ProductMarketController,
     AcquisitionController,
     AurelCommandController,
+    AurelOpsController,
     ReplyWebhookController,
     ListsController,
     CampaignsController,
@@ -147,8 +152,11 @@ const entities = [
     CampaignSendService,
     AurelAutopilotService,
     AurelAcquisitionService,
+    AurelHotPipelineService,
     AurelDeferredFollowUpService,
+    AurelMeetingService,
     AurelReportService,
+    AurelOpsService,
     TrackingService,
     SendsService,
     DiscoverService,
