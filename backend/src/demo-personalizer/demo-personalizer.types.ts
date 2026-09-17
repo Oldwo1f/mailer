@@ -29,5 +29,22 @@ export type DemoPreparation = {
   sourceReviewState: 'accepted' | 'overridden';
   artifactStatus: DemoArtifactStatus;
   artifactUrls: string[];
+  artifactGeneratedAt?: string | null;
+  artifactVersion?: number;
   preparedAt: string;
+};
+
+export type DemoRecipeScreen = {
+  id: string;
+  title: string;
+  purpose: string;
+  personalization: string[];
+};
+
+export type DemoRecipe = {
+  productId: ProductCatalogEntry['id'];
+  productName: string;
+  demoType: string;
+  targetScreenCount: number;
+  screens: DemoRecipeScreen[];
 };
