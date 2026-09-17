@@ -69,6 +69,8 @@ import { AurelOpsService } from './commercial/aurel-ops.service';
 import { AurelOpsController } from './commercial/aurel-ops.controller';
 import { AurelMeetingService } from './commercial/aurel-meeting.service';
 import { AurelHotPipelineService } from './commercial/aurel-hot-pipeline.service';
+import { AurelTesterSmokeService } from './commercial/aurel-tester-smoke.service';
+import { AurelTesterSmokeController } from './commercial/aurel-tester-smoke.controller';
 
 const entities = [
   Prospect,
@@ -115,6 +117,7 @@ const entities = [
     AcquisitionController,
     AurelCommandController,
     AurelOpsController,
+    AurelTesterSmokeController,
     ReplyWebhookController,
     ListsController,
     CampaignsController,
@@ -155,6 +158,7 @@ const entities = [
     AurelHotPipelineService,
     AurelDeferredFollowUpService,
     AurelMeetingService,
+    AurelTesterSmokeService,
     AurelReportService,
     AurelOpsService,
     TrackingService,
