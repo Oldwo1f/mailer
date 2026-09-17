@@ -28,6 +28,15 @@ const SECRET_KEYS = [
   'smtpPass',
 ] as const;
 
+const PRODUCTION_SERVER_ONLY_KEYS = new Set<string>([
+  ...SECRET_KEYS,
+  'mailserverUrl',
+  'smtpHost',
+  'smtpPort',
+  'smtpSecure',
+  'mailgunDomain',
+]);
+
 export type SecretKey = (typeof SECRET_KEYS)[number];
 
 export const MAIL_PROVIDERS = [
@@ -138,6 +147,10 @@ export class SettingsService {
     private readonly config: ConfigService,
   ) {}
 
+  private isProduction() {
+    return this.config.get<string>('NODE_ENV') === 'production';
+  }
+
   async getRaw(): Promise<Record<string, string | number | boolean | null>> {
     const row = await this.repo.findOneBy({ id: 'default' });
     return { ...(row?.values ?? {}) };
@@ -159,26 +172,15 @@ export class SettingsService {
         ),
     }));
 
-    providers.forEach((p) => {
-      if (p.id === 'you') {
-        p.configured =
-          Boolean(values.youApiKey) ||
-          Boolean(this.config.get('YDC_API_KEY')?.trim()) ||
-          Boolean(this.config.get('YOU_API_KEY')?.trim());
-      }
-    });
-
     const openaiConfigured = Boolean(await this.getSecret('openaiApiKey'));
+    const productionSecretsLocked = this.isProduction();
 
     return {
       publicUrl:
         (values.publicUrl as string) ||
         this.config.get('PUBLIC_URL') ||
         'http://localhost:3001',
-      mailserverUrl:
-        (values.mailserverUrl as string) ||
-        this.config.get('MAILSERVER_URL') ||
-        'http://127.0.0.1:3000',
+      mailserverUrl: productionSecretsLocked ? '' : await this.getMailserverUrl(),
       sendDelayMs:
         Number(values.sendDelayMs) ||
         Number(this.config.get('SEND_DELAY_MS')) ||
@@ -186,6 +188,7 @@ export class SettingsService {
       openaiModel: await this.getOpenaiModel(),
       openaiConfigured,
       llmConfigured: openaiConfigured,
+      productionSecretsLocked,
       mailserverApiKeyConfigured: Boolean(
         await this.getSecret('mailserverApiKey'),
       ),
@@ -202,10 +205,12 @@ export class SettingsService {
         (await this.getSecret('mailgunApiKey')) &&
           (await this.getMailgunDomain()),
       ),
-      mailgunDomain: (await this.getMailgunDomain()) || '',
-      smtpHost: (await this.getSmtpHost()) || '',
-      smtpPort: await this.getSmtpPort(),
-      smtpSecure: await this.getSmtpSecure(),
+      mailgunDomain: productionSecretsLocked
+        ? ''
+        : (await this.getMailgunDomain()) || '',
+      smtpHost: productionSecretsLocked ? '' : (await this.getSmtpHost()) || '',
+      smtpPort: productionSecretsLocked ? 587 : await this.getSmtpPort(),
+      smtpSecure: productionSecretsLocked ? false : await this.getSmtpSecure(),
       mailFrom:
         (values.mailFrom as string) || this.config.get('MAIL_FROM') || '',
       mailFromName:
@@ -286,16 +291,26 @@ export class SettingsService {
       (await this.repo.findOneBy({ id: 'default' })) ||
       this.repo.create({ id: 'default', values: {} });
     const values = { ...(row.values ?? {}) };
+
+    if (this.isProduction()) {
+      // Credentials and transport endpoints are server-managed in production.
+      for (const key of PRODUCTION_SERVER_ONLY_KEYS) {
+        delete values[key];
+      }
+    }
+
     for (const [key, val] of Object.entries(patch)) {
       if (val === undefined) continue;
-      if (key === 'openrouterApiKey') continue; // removed
+      if (key === 'openrouterApiKey') continue;
+      if (this.isProduction() && PRODUCTION_SERVER_ONLY_KEYS.has(key)) {
+        continue;
+      }
       if (val === '' || val === null) {
         delete values[key];
       } else {
         values[key] = val as string | number | boolean;
       }
     }
-    // Drop legacy OpenRouter key if still stored
     delete values.openrouterApiKey;
     row.values = values;
     await this.repo.save(row);
@@ -303,9 +318,11 @@ export class SettingsService {
   }
 
   async getSecret(key: string): Promise<string | null> {
-    const values = await this.getRaw();
-    const fromDb = values[key];
-    if (typeof fromDb === 'string' && fromDb.trim()) return fromDb.trim();
+    if (!this.isProduction()) {
+      const values = await this.getRaw();
+      const fromDb = values[key];
+      if (typeof fromDb === 'string' && fromDb.trim()) return fromDb.trim();
+    }
 
     const envMap: Record<string, string[]> = {
       openaiApiKey: ['OPENAI_API_KEY'],
@@ -342,6 +359,11 @@ export class SettingsService {
   }
 
   async getMailserverUrl(): Promise<string> {
+    if (this.isProduction()) {
+      return (
+        this.config.get<string>('MAILSERVER_URL') || 'http://127.0.0.1:3000'
+      ).replace(/\/$/, '');
+    }
     const values = await this.getRaw();
     return (
       (values.mailserverUrl as string) ||
@@ -366,7 +388,6 @@ export class SettingsService {
       this.config.get('OPENAI_MODEL') ||
       'gpt-4o-mini';
     configured = configured.trim();
-    // Strip OpenRouter-style prefix if leftover
     if (configured.startsWith('openai/')) {
       configured = configured.slice('openai/'.length);
     }
@@ -380,7 +401,7 @@ export class SettingsService {
     const openai = await this.getSecret('openaiApiKey');
     if (!openai) {
       throw new Error(
-        'Clé OpenAI manquante. Configurez OPENAI_API_KEY dans Config.',
+        'Clé OpenAI manquante. Configurez OPENAI_API_KEY sur le serveur.',
       );
     }
     return { apiKey: openai, provider: 'openai' };
@@ -408,6 +429,10 @@ export class SettingsService {
   }
 
   async getMailgunDomain(): Promise<string | null> {
+    if (this.isProduction()) {
+      const domain = this.config.get<string>('MAILGUN_DOMAIN') || '';
+      return domain.trim() || null;
+    }
     const values = await this.getRaw();
     const domain =
       (values.mailgunDomain as string) ||
@@ -417,6 +442,10 @@ export class SettingsService {
   }
 
   async getSmtpHost(): Promise<string | null> {
+    if (this.isProduction()) {
+      const host = this.config.get<string>('SMTP_HOST') || '';
+      return host.trim() || null;
+    }
     const values = await this.getRaw();
     const host =
       (values.smtpHost as string) || this.config.get('SMTP_HOST') || '';
@@ -424,6 +453,9 @@ export class SettingsService {
   }
 
   async getSmtpPort(): Promise<number> {
+    if (this.isProduction()) {
+      return Number(this.config.get('SMTP_PORT')) || 587;
+    }
     const values = await this.getRaw();
     return (
       Number(values.smtpPort) || Number(this.config.get('SMTP_PORT')) || 587
@@ -431,6 +463,9 @@ export class SettingsService {
   }
 
   async getSmtpSecure(): Promise<boolean> {
+    if (this.isProduction()) {
+      return this.config.get('SMTP_SECURE') === 'true';
+    }
     const values = await this.getRaw();
     if (values.smtpSecure === true || values.smtpSecure === 'true') return true;
     if (values.smtpSecure === false || values.smtpSecure === 'false') {
