@@ -7,6 +7,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { ProspectList } from './prospect-list.entity';
+import type { ProductRecommendation } from '../product-matcher/product-matcher.types';
 
 export type ProspectEnrichment = {
   website?: string | null;
@@ -61,6 +62,9 @@ export class Prospect {
 
   @Column({ type: 'simple-json', nullable: true })
   enrichment: ProspectEnrichment | null;
+
+  @Column({ type: 'simple-json', nullable: true })
+  productRecommendation: ProductRecommendation | null;
 
   @Column({ type: 'text', nullable: true })
   notes: string | null;

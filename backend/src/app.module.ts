@@ -48,6 +48,7 @@ import { DiscoverController } from './discover/discover.controller';
 import { AuthController } from './auth/auth.controller';
 import { AuthGuard } from './auth/auth.guard';
 import { AuthService } from './auth/auth.service';
+import { ProductMatcherService } from './product-matcher/product-matcher.service';
 
 const entities = [
   Prospect,
@@ -110,6 +111,7 @@ const entities = [
     LlmService,
     ProspectsService,
     EnrichmentService,
+    ProductMatcherService,
     ListsService,
     CampaignsService,
     MailRelayService,
