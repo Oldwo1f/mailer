@@ -4,10 +4,11 @@ import Column from 'primevue/column'
 import DataTable from 'primevue/datatable'
 import Tag from 'primevue/tag'
 
- type RadarTier = 'cold' | 'promising' | 'hot'
- type DemoEnergyMode = 'none' | 'prepare' | 'generate' | 'generated'
+type RadarTier = 'cold' | 'promising' | 'hot'
+type DemoEnergyMode = 'none' | 'prepare' | 'generate' | 'generated'
+type LearningConfidence = 'collecting' | 'usable' | 'strong'
 
- type RadarItem = {
+type RadarItem = {
   prospectId: string
   company: string
   contactName: string | null
@@ -26,9 +27,13 @@ import Tag from 'primevue/tag'
   demoMode: DemoEnergyMode
   demoReason: string
   updatedAt: string | null
+  learningAdjustment?: number
+  learningConfidence?: LearningConfidence
+  learningSourceLabel?: string | null
+  learningReason?: string | null
 }
 
- type RadarResult = {
+type RadarResult = {
   generatedAt: string
   summary: {
     totalActive: number
@@ -38,6 +43,17 @@ import Tag from 'primevue/tag'
     demoEligible: number
     repliesNeedingAttention: number
     activePipelineValueXpf: number
+    learningAdjusted?: number
+  }
+  learning?: {
+    baseline: {
+      contacted: number
+      replyRate: number | null
+      opportunityRate: number | null
+    }
+    thresholds: {
+      minContactedForAdjustment: number
+    }
   }
   items: RadarItem[]
 }
@@ -99,6 +115,24 @@ function formatXpf(value: number | null | undefined) {
   return `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(value || 0)} XPF`
 }
 
+function formatRate(value: number | null | undefined) {
+  if (value == null) return '—'
+  return new Intl.NumberFormat('fr-FR', { style: 'percent', maximumFractionDigits: 1 }).format(value)
+}
+
+function learningLabel(item: RadarItem) {
+  const value = item.learningAdjustment || 0
+  if (!value) return 'Collecte'
+  return `${value > 0 ? '+' : ''}${value} pts`
+}
+
+function learningSeverity(item: RadarItem) {
+  const value = item.learningAdjustment || 0
+  if (value > 0) return 'success'
+  if (value < 0) return 'warn'
+  return 'secondary'
+}
+
 function actionPath(item: RadarItem) {
   if (item.demoMode === 'generate' || item.demoMode === 'generated') return '/demo-personalizer'
   if (!item.productName) return '/product-matcher'
@@ -113,9 +147,10 @@ onMounted(load)
     <div class="page-header">
       <div>
         <h1>Aurel Radar</h1>
-        <p>Qui mérite notre énergie maintenant — et qui doit rester au repos.</p>
+        <p>Qui mérite notre énergie maintenant — avec apprentissage progressif sur vos vrais résultats.</p>
       </div>
       <div class="row">
+        <NuxtLink to="/performance"><Button label="Apprentissage" icon="pi pi-chart-bar" text /></NuxtLink>
         <NuxtLink to="/pipeline"><Button label="Pipeline" icon="pi pi-chart-line" text /></NuxtLink>
         <Button label="Actualiser" icon="pi pi-refresh" text :loading="loading" @click="load" />
       </div>
@@ -135,6 +170,10 @@ onMounted(load)
         <strong>{{ radar.summary.cold }}</strong>
       </button>
       <div class="card kpi">
+        <span class="muted">Priorités apprises</span>
+        <strong>{{ radar.summary.learningAdjusted || 0 }}</strong>
+      </div>
+      <div class="card kpi">
         <span class="muted">Démo justifiée</span>
         <strong>{{ radar.summary.demoEligible }}</strong>
       </div>
@@ -150,9 +189,12 @@ onMounted(load)
 
     <div class="card radar-rule">
       <div>
-        <strong>Règle anti-gaspillage</strong>
+        <strong>Règle anti-gaspillage + apprentissage</strong>
         <p class="muted">
-          Froid = aucun rendu. Prometteur = préparation légère. Chaud = vraie démo seulement si un signal commercial le justifie.
+          Les signaux réels du prospect restent prioritaires. Aurel n'ajuste un segment qu'après {{ radar?.learning?.thresholds.minContactedForAdjustment || 8 }} contacts comparables, avec une correction limitée à ±8 points. Cet apprentissage ne peut pas, seul, rendre un prospect chaud.
+        </p>
+        <p v-if="radar?.learning" class="muted baseline">
+          Base actuelle : {{ radar.learning.baseline.contacted }} contactés · {{ formatRate(radar.learning.baseline.replyRate) }} de réponses · {{ formatRate(radar.learning.baseline.opportunityRate) }} d'opportunités.
         </p>
       </div>
       <Button
@@ -192,6 +234,16 @@ onMounted(load)
           </template>
         </Column>
 
+        <Column header="Apprentissage" style="min-width: 190px">
+          <template #body="{ data }">
+            <div class="stack" style="gap: 0.3rem">
+              <Tag :value="learningLabel(data)" :severity="learningSeverity(data)" />
+              <span v-if="data.learningSourceLabel" class="muted">{{ data.learningSourceLabel }}</span>
+              <span v-else class="muted">Pas encore assez de recul</span>
+            </div>
+          </template>
+        </Column>
+
         <Column header="Signaux" style="min-width: 220px">
           <template #body="{ data }">
             <div class="signals">
@@ -203,7 +255,7 @@ onMounted(load)
 
         <Column header="Action suivante" style="min-width: 240px">
           <template #body="{ data }">
-            <strong>{{ data.nextAction }}</strong>
+            <strong>{{ data.nextCommercialAction || data.nextAction }}</strong>
           </template>
         </Column>
 
@@ -245,7 +297,7 @@ onMounted(load)
 <style scoped>
 .radar-kpis {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 0.85rem;
 }
 .kpi {
@@ -276,12 +328,18 @@ onMounted(load)
 .radar-rule p {
   margin: 0.35rem 0 0;
 }
+.baseline {
+  font-size: 0.86rem;
+}
 .signals {
   display: flex;
   gap: 0.3rem;
   flex-wrap: wrap;
 }
-@media (max-width: 1200px) {
+@media (max-width: 1350px) {
+  .radar-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
   .radar-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 700px) {

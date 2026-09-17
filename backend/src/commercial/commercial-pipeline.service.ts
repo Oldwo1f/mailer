@@ -16,6 +16,10 @@ import {
 import { ProductMarketService } from './product-market.service';
 import { classifyReply, type ReplyAnalysis } from './reply-intelligence';
 import { buildAutoReplyMessage } from './reply-autopilot';
+import {
+  buildCommercialLearning,
+  learningAdjustmentForProspect,
+} from './commercial-learning';
 
 const STAGE_RANK: Record<LeadStatus, number> = {
   new: 0,
@@ -85,6 +89,11 @@ export class CommercialPipelineService {
     return buildProductAnalytics(rows);
   }
 
+  async commercialLearning() {
+    const rows = await this.prospects.find();
+    return buildCommercialLearning(rows);
+  }
+
   async radar() {
     const [prospects, sends] = await Promise.all([
       this.prospects.find(),
@@ -111,6 +120,7 @@ export class CommercialPipelineService {
     }
 
     const radar = buildAurelRadar(prospects, metrics);
+    const learning = buildCommercialLearning(prospects);
     const byId = new Map(prospects.map((prospect) => [prospect.id, prospect]));
 
     const items = await Promise.all(
@@ -126,9 +136,31 @@ export class CommercialPipelineService {
           market?.enabled && market?.autopilotEnabled,
         );
 
+        const learningAdjustment = prospect
+          ? learningAdjustmentForProspect(learning, prospect)
+          : {
+              points: 0,
+              confidence: 'collecting' as const,
+              source: null,
+              sourceLabel: null,
+              reason: null,
+            };
+
+        const canLearnOnPriority = ['new', 'contacted'].includes(item.leadStatus);
+        const appliedLearning = canLearnOnPriority ? learningAdjustment.points : 0;
+        const learnedScore = Math.max(0, Math.min(100, item.score + appliedLearning));
+        const learnedTier =
+          item.tier === 'hot'
+            ? item.tier
+            : learnedScore >= 40
+              ? ('promising' as const)
+              : ('cold' as const);
+
         if (productId && market && !marketEligible) {
           return {
             ...item,
+            score: learnedScore,
+            tier: learnedTier,
             marketId,
             marketName: market.marketName,
             currency: market.currency,
@@ -138,6 +170,11 @@ export class CommercialPipelineService {
             idealCustomers: market.idealCustomers,
             buyingSignals: market.buyingSignals,
             objections: market.objections,
+            learningAdjustment: appliedLearning,
+            learningConfidence: learningAdjustment.confidence,
+            learningSource: learningAdjustment.source,
+            learningSourceLabel: learningAdjustment.sourceLabel,
+            learningReason: learningAdjustment.reason,
             nextAction:
               'Marché verrouillé pour ce produit — aucune prospection automatique.',
             demoEligible: false,
@@ -149,6 +186,8 @@ export class CommercialPipelineService {
 
         return {
           ...item,
+          score: learnedScore,
+          tier: learnedTier,
           marketId,
           marketName: market?.marketName || null,
           currency: market?.currency || null,
@@ -162,20 +201,37 @@ export class CommercialPipelineService {
           replyConfidence: prospect?.lastReplyConfidence || null,
           nextCommercialAction: prospect?.nextCommercialAction || null,
           autoReplySentAt: prospect?.autoReplySentAt || null,
+          learningAdjustment: appliedLearning,
+          learningConfidence: learningAdjustment.confidence,
+          learningSource: learningAdjustment.source,
+          learningSourceLabel: learningAdjustment.sourceLabel,
+          learningReason: learningAdjustment.reason,
         };
       }),
     );
 
+    items.sort(
+      (a, b) => b.score - a.score || b.clicks - a.clicks || b.opens - a.opens,
+    );
+
     return {
       ...radar,
+      learning: {
+        baseline: learning.baseline,
+        thresholds: learning.thresholds,
+      },
       summary: {
         ...radar.summary,
+        cold: items.filter((item) => item.tier === 'cold').length,
+        promising: items.filter((item) => item.tier === 'promising').length,
+        hot: items.filter((item) => item.tier === 'hot').length,
         autopilotEligible: items.filter((item) => item.autopilotEnabled).length,
         blockedByMarket: items.filter(
           (item) =>
             Boolean(byId.get(item.prospectId)?.productRecommendation?.productId) &&
             !item.marketEligible,
         ).length,
+        learningAdjusted: items.filter((item) => item.learningAdjustment !== 0).length,
       },
       items,
     };
