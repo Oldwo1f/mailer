@@ -51,6 +51,9 @@ import { AuthService } from './auth/auth.service';
 import { ProductMatcherService } from './product-matcher/product-matcher.service';
 import { DemoPersonalizerController } from './demo-personalizer/demo-personalizer.controller';
 import { DemoPersonalizerService } from './demo-personalizer/demo-personalizer.service';
+import { CommercialPipelineController } from './commercial/commercial-pipeline.controller';
+import { ReplyWebhookController } from './commercial/reply-webhook.controller';
+import { CommercialPipelineService } from './commercial/commercial-pipeline.service';
 
 const entities = [
   Prospect,
@@ -90,6 +93,8 @@ const entities = [
     HealthController,
     ProspectsController,
     DemoPersonalizerController,
+    CommercialPipelineController,
+    ReplyWebhookController,
     ListsController,
     CampaignsController,
     DraftsController,
@@ -116,6 +121,7 @@ const entities = [
     EnrichmentService,
     ProductMatcherService,
     DemoPersonalizerService,
+    CommercialPipelineService,
     ListsService,
     CampaignsService,
     MailRelayService,
