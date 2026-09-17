@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 import { ProspectList } from './prospect-list.entity';
 import type { ProductRecommendation } from '../product-matcher/product-matcher.types';
+import type { DemoPreparation } from '../demo-personalizer/demo-personalizer.types';
 
 export type ProspectEnrichment = {
   website?: string | null;
@@ -65,6 +66,9 @@ export class Prospect {
 
   @Column({ type: 'simple-json', nullable: true })
   productRecommendation: ProductRecommendation | null;
+
+  @Column({ type: 'simple-json', nullable: true })
+  demoPreparation: DemoPreparation | null;
 
   @Column({ type: 'text', nullable: true })
   notes: string | null;
