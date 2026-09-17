@@ -70,11 +70,18 @@ export class ReplyWebhookController {
       replyToMessageId: dto.replyToMessageId || null,
       messageId: dto.messageId || null,
     });
+    const reply = result as typeof result & {
+      matched?: boolean;
+      duplicate?: boolean;
+      prospectId?: string;
+      replyIntent?: string | null;
+      analysis?: { intent?: string | null } | null;
+    };
 
-    if (!result.duplicate && result.matched) {
+    if (!reply.duplicate && reply.matched) {
       const meeting = await this.meetings.handle({
-        prospectId: result.prospectId,
-        intent: result.analysis?.intent || result.replyIntent || null,
+        prospectId: reply.prospectId,
+        intent: reply.analysis?.intent || reply.replyIntent || null,
         fromEmail: dto.fromEmail,
         subject: dto.subject || null,
       });
