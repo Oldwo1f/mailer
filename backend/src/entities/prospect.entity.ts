@@ -122,6 +122,15 @@ export class Prospect {
   autoReplySentAt: Date | null;
 
   @Column({ type: 'datetime', nullable: true })
+  deferredFollowUpAt: Date | null;
+
+  @Column({ type: 'datetime', nullable: true })
+  deferredFollowUpSentAt: Date | null;
+
+  @Column({ type: 'text', nullable: true })
+  deferredFollowUpReason: string | null;
+
+  @Column({ type: 'datetime', nullable: true })
   wonAt: Date | null;
 
   @Column({ type: 'text', nullable: true })

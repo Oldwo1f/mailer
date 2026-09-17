@@ -19,6 +19,7 @@ export type ReplyAnalysis = {
   nextAction: string;
   reason: string;
   analyzedText: string;
+  followUpAt?: string | null;
 };
 
 function latestReplySegment(value: string) {
@@ -56,13 +57,75 @@ function result(
   return { ...value, analyzedText };
 }
 
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function addMonths(date: Date, months: number) {
+  const next = new Date(date);
+  next.setMonth(next.getMonth() + months);
+  return next;
+}
+
+function followUpDate(text: string, now: Date) {
+  const normalized = normalize(text);
+  const relative = normalized.match(
+    /dans\s+(\d{1,2})\s+(jour|jours|semaine|semaines|mois)/,
+  );
+  if (relative) {
+    const amount = Math.max(1, Math.min(24, Number(relative[1]) || 1));
+    const unit = relative[2];
+    if (unit.startsWith('jour')) return addDays(now, amount);
+    if (unit.startsWith('semaine')) return addDays(now, amount * 7);
+    return addMonths(now, amount);
+  }
+
+  if (normalized.includes('semaine prochaine')) return addDays(now, 7);
+  if (normalized.includes('mois prochain')) return addMonths(now, 1);
+  if (normalized.includes('annee prochaine')) return addMonths(now, 12);
+
+  const monthNames = [
+    'janvier',
+    'fevrier',
+    'mars',
+    'avril',
+    'mai',
+    'juin',
+    'juillet',
+    'aout',
+    'septembre',
+    'octobre',
+    'novembre',
+    'decembre',
+  ];
+  const month = monthNames.findIndex((name) => normalized.includes(name));
+  if (month >= 0) {
+    const candidate = new Date(now);
+    candidate.setHours(9, 0, 0, 0);
+    candidate.setDate(15);
+    candidate.setMonth(month);
+    if (candidate.getTime() <= now.getTime()) {
+      candidate.setFullYear(candidate.getFullYear() + 1);
+    }
+    return candidate;
+  }
+
+  // When the prospect says “later” without a date, use a conservative 30-day delay.
+  return addDays(now, 30);
+}
+
 export function classifyReply(input: {
   subject?: string | null;
   bodyText?: string | null;
+  receivedAt?: Date | string | null;
 }): ReplyAnalysis {
   const cleanBody = latestReplySegment(input.bodyText || '');
   const analyzedText = cleanBody || input.subject || '';
   const text = normalize(analyzedText);
+  const now = input.receivedAt ? new Date(input.receivedAt) : new Date();
+  const safeNow = Number.isNaN(now.getTime()) ? new Date() : now;
 
   if (
     hasAny(text, [
@@ -115,17 +178,20 @@ export function classifyReply(input: {
       'revenez vers',
       'mois prochain',
       'annee prochaine',
+      'semaine prochaine',
       'pas maintenant',
       'pour le moment',
-    ])
+    ]) || /dans\s+\d{1,2}\s+(jour|jours|semaine|semaines|mois)/.test(text)
   ) {
+    const followUpAt = followUpDate(analyzedText, safeNow).toISOString();
     return result(analyzedText, {
       intent: 'later',
       confidence: 0.87,
       suggestedStatus: 'interested',
       autoReplyAllowed: true,
-      nextAction: 'Accuser réception et conserver le prospect pour une relance différée.',
+      nextAction: `Accuser réception et relancer automatiquement à partir du ${followUpAt.slice(0, 10)}.`,
       reason: 'Intérêt possible mais échéance repoussée.',
+      followUpAt,
     });
   }
 

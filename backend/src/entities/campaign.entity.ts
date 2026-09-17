@@ -57,6 +57,15 @@ export class Campaign {
   @Column({ type: 'simple-json', nullable: true })
   listIds: string[] | null;
 
+  @Column({ type: 'varchar', nullable: true })
+  aurelSource: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  experimentKey: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  experimentVariant: string | null;
+
   @Column({ type: 'int', default: 0 })
   currentStepIndex: number;
 

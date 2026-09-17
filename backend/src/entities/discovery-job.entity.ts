@@ -58,6 +58,24 @@ export class DiscoveryJob {
   @Column({ type: 'simple-json', nullable: true })
   results: DiscoverJobResults | null;
 
+  @Column({ type: 'varchar', nullable: true })
+  aurelMissionKey: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  aurelProductId: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  aurelProductName: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  aurelActivity: string | null;
+
+  @Column({ type: 'simple-json', nullable: true })
+  aurelCampaignIds: string[] | null;
+
+  @Column({ type: 'datetime', nullable: true })
+  aurelPostProcessedAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

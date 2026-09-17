@@ -20,6 +20,7 @@ import {
   buildCommercialLearning,
   learningAdjustmentForProspect,
 } from './commercial-learning';
+import { AurelJournalService } from './aurel-journal.service';
 
 const STAGE_RANK: Record<LeadStatus, number> = {
   new: 0,
@@ -44,6 +45,7 @@ export class CommercialPipelineService {
     private readonly sends: Repository<Send>,
     private readonly productMarkets: ProductMarketService,
     private readonly mail: MailService,
+    private readonly journal: AurelJournalService,
   ) {}
 
   list() {
@@ -113,9 +115,7 @@ export class CommercialPipelineService {
       current.opens += Math.max(0, Number(send.openCount) || 0);
       current.clicks += Math.max(0, Number(send.clickCount) || 0);
       if (!current.lastSentAt && send.sentAt) current.lastSentAt = send.sentAt;
-      if (!current.lastOpenedAt && send.lastOpenedAt) {
-        current.lastOpenedAt = send.lastOpenedAt;
-      }
+      if (!current.lastOpenedAt && send.lastOpenedAt) current.lastOpenedAt = send.lastOpenedAt;
       metrics.set(send.prospectId, current);
     }
 
@@ -132,9 +132,7 @@ export class CommercialPipelineService {
           ? await this.productMarkets.get(productId, marketId)
           : null;
         const marketEligible = Boolean(market?.enabled);
-        const autopilotEnabled = Boolean(
-          market?.enabled && market?.autopilotEnabled,
-        );
+        const autopilotEnabled = Boolean(market?.enabled && market?.autopilotEnabled);
 
         const learningAdjustment = prospect
           ? learningAdjustmentForProspect(learning, prospect)
@@ -145,7 +143,6 @@ export class CommercialPipelineService {
               sourceLabel: null,
               reason: null,
             };
-
         const canLearnOnPriority = ['new', 'contacted'].includes(item.leadStatus);
         const appliedLearning = canLearnOnPriority ? learningAdjustment.points : 0;
         const learnedScore = Math.max(0, Math.min(100, item.score + appliedLearning));
@@ -175,12 +172,10 @@ export class CommercialPipelineService {
             learningSource: learningAdjustment.source,
             learningSourceLabel: learningAdjustment.sourceLabel,
             learningReason: learningAdjustment.reason,
-            nextAction:
-              'Marché verrouillé pour ce produit — aucune prospection automatique.',
+            nextAction: 'Marché verrouillé pour ce produit — aucune prospection automatique.',
             demoEligible: false,
             demoMode: 'none' as const,
-            demoReason:
-              'Produit non activé commercialement sur ce marché : aucune énergie de démo.',
+            demoReason: 'Produit non activé commercialement sur ce marché : aucune énergie de démo.',
           };
         }
 
@@ -201,6 +196,7 @@ export class CommercialPipelineService {
           replyConfidence: prospect?.lastReplyConfidence || null,
           nextCommercialAction: prospect?.nextCommercialAction || null,
           autoReplySentAt: prospect?.autoReplySentAt || null,
+          deferredFollowUpAt: prospect?.deferredFollowUpAt || null,
           learningAdjustment: appliedLearning,
           learningConfidence: learningAdjustment.confidence,
           learningSource: learningAdjustment.source,
@@ -210,9 +206,7 @@ export class CommercialPipelineService {
       }),
     );
 
-    items.sort(
-      (a, b) => b.score - a.score || b.clicks - a.clicks || b.opens - a.opens,
-    );
+    items.sort((a, b) => b.score - a.score || b.clicks - a.clicks || b.opens - a.opens);
 
     return {
       ...radar,
@@ -256,8 +250,10 @@ export class CommercialPipelineService {
       if (input.leadStatus === 'won') {
         prospect.wonAt = prospect.wonAt || new Date();
         prospect.lostReason = null;
+        prospect.deferredFollowUpAt = null;
       } else if (input.leadStatus === 'lost') {
         prospect.wonAt = null;
+        prospect.deferredFollowUpAt = null;
       } else {
         prospect.wonAt = null;
         prospect.lostReason = null;
@@ -289,18 +285,15 @@ export class CommercialPipelineService {
 
   private applyReplyStatus(prospect: Prospect, analysis: ReplyAnalysis) {
     const current = prospect.leadStatus || 'new';
-
     if (analysis.intent === 'unsubscribe' || analysis.intent === 'not_interested') {
       if (current !== 'won') prospect.leadStatus = 'lost';
       return;
     }
-
     if (current === 'won') return;
     if (current === 'lost') {
       prospect.leadStatus = analysis.suggestedStatus;
       return;
     }
-
     const suggested = analysis.suggestedStatus;
     prospect.leadStatus =
       STAGE_RANK[suggested] > STAGE_RANK[current] ? suggested : current;
@@ -321,9 +314,7 @@ export class CommercialPipelineService {
       order: { sentAt: 'DESC' },
     });
     const match = sent.find((row) => row.toEmail.trim().toLowerCase() === email);
-    if (!match?.prospect) {
-      return { ok: true, matched: false };
-    }
+    if (!match?.prospect) return { ok: true, matched: false };
 
     const prospect = match.prospect;
     if (
@@ -343,6 +334,7 @@ export class CommercialPipelineService {
     const analysis = classifyReply({
       subject: input.subject,
       bodyText: input.bodyText,
+      receivedAt: input.receivedAt,
     });
 
     prospect.replyDetectedAt = input.receivedAt || new Date();
@@ -351,8 +343,17 @@ export class CommercialPipelineService {
     prospect.lastReplyMessageId = input.messageId?.trim().slice(0, 500) || null;
     prospect.lastReplyIntent = analysis.intent;
     prospect.lastReplyConfidence = analysis.confidence;
-    prospect.lastReplySnippet = input.bodyText?.trim().slice(0, 1200) || null;
+    prospect.lastReplySnippet = analysis.analyzedText?.trim().slice(0, 1200) || null;
     prospect.nextCommercialAction = analysis.nextAction;
+
+    if (analysis.intent === 'later' && analysis.followUpAt) {
+      prospect.deferredFollowUpAt = new Date(analysis.followUpAt);
+      prospect.deferredFollowUpSentAt = null;
+      prospect.deferredFollowUpReason = analysis.analyzedText.slice(0, 500);
+    } else if (analysis.intent !== 'later') {
+      prospect.deferredFollowUpAt = null;
+      prospect.deferredFollowUpReason = null;
+    }
 
     if (analysis.intent === 'unsubscribe') {
       prospect.unsubscribedAt = prospect.unsubscribedAt || new Date();
@@ -366,6 +367,19 @@ export class CommercialPipelineService {
     this.applyReplyStatus(prospect, analysis);
     await this.prospects.save(prospect);
 
+    await this.journal.log({
+      actionType: 'reply_classified',
+      prospectId: prospect.id,
+      campaignId: match.campaignId,
+      summary: `${prospect.company} : réponse classée « ${analysis.intent} » (${Math.round(analysis.confidence * 100)} %).`,
+      details: {
+        intent: analysis.intent,
+        confidence: analysis.confidence,
+        leadStatus: prospect.leadStatus,
+        followUpAt: analysis.followUpAt || null,
+      },
+    });
+
     await this.sends
       .createQueryBuilder()
       .update(Send)
@@ -376,7 +390,6 @@ export class CommercialPipelineService {
 
     let autoReplySent = false;
     let autoReplyError: string | null = null;
-
     try {
       const recommendation = prospect.productRecommendation;
       const reviewed =
@@ -411,7 +424,6 @@ export class CommercialPipelineService {
             headers['In-Reply-To'] = input.replyToMessageId.trim();
             headers.References = input.replyToMessageId.trim();
           }
-
           await this.mail.send({
             to: email,
             subject: message.subject,
@@ -421,21 +433,33 @@ export class CommercialPipelineService {
             replyTo: sender.replyTo || sender.email,
             ...(Object.keys(headers).length ? { headers } : {}),
           });
-
           prospect.autoReplySentAt = new Date();
           prospect.nextCommercialAction =
             analysis.intent === 'later'
-              ? 'Réponse automatique envoyée — attendre avant toute nouvelle relance.'
+              ? `Réponse automatique envoyée — relance prévue ${analysis.followUpAt?.slice(0, 10) || 'plus tard'}.`
               : 'Réponse automatique envoyée — surveiller le prochain retour du prospect.';
           await this.prospects.save(prospect);
           autoReplySent = true;
+          await this.journal.log({
+            actionType: 'auto_reply_sent',
+            prospectId: prospect.id,
+            campaignId: match.campaignId,
+            summary: `Aurel a répondu automatiquement à ${prospect.company} (${analysis.intent}).`,
+            details: { intent: analysis.intent },
+          });
         }
       }
     } catch (err) {
       autoReplyError = err instanceof Error ? err.message : String(err);
-      this.logger.warn(
-        `Reply Autopilot ${prospect.id}: ${autoReplyError.slice(0, 240)}`,
-      );
+      this.logger.warn(`Reply Autopilot ${prospect.id}: ${autoReplyError.slice(0, 240)}`);
+      await this.journal.log({
+        actionType: 'auto_reply_failed',
+        status: 'error',
+        prospectId: prospect.id,
+        campaignId: match.campaignId,
+        summary: `Réponse automatique non envoyée à ${prospect.company}.`,
+        details: { error: autoReplyError.slice(0, 500) },
+      });
     }
 
     return {
