@@ -38,6 +38,17 @@ export type ProspectProfile = {
   [key: string]: unknown;
 };
 
+export type LeadStatus =
+  | 'new'
+  | 'contacted'
+  | 'replied'
+  | 'interested'
+  | 'demo'
+  | 'meeting'
+  | 'quote'
+  | 'won'
+  | 'lost';
+
 @Entity('prospects')
 export class Prospect {
   @PrimaryGeneratedColumn('uuid')
@@ -69,6 +80,30 @@ export class Prospect {
 
   @Column({ type: 'simple-json', nullable: true })
   demoPreparation: DemoPreparation | null;
+
+  @Column({ type: 'varchar', default: 'new' })
+  leadStatus: LeadStatus;
+
+  @Column({ type: 'integer', nullable: true })
+  dealValueXpf: number | null;
+
+  @Column({ type: 'datetime', nullable: true })
+  replyDetectedAt: Date | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  lastReplyFrom: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  lastReplySubject: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  lastReplyMessageId: string | null;
+
+  @Column({ type: 'datetime', nullable: true })
+  wonAt: Date | null;
+
+  @Column({ type: 'text', nullable: true })
+  lostReason: string | null;
 
   @Column({ type: 'text', nullable: true })
   notes: string | null;
