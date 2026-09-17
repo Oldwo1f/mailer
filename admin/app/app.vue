@@ -43,6 +43,9 @@ async function logout() {
         <NuxtLink to="/" :class="{ active: $route.path === '/' }">
           <i class="pi pi-home" /> Accueil
         </NuxtLink>
+        <NuxtLink to="/radar" active-class="active">
+          <i class="pi pi-bullseye" /> Aurel Radar
+        </NuxtLink>
         <NuxtLink to="/prospects" active-class="active">
           <i class="pi pi-users" /> Prospects
         </NuxtLink>
