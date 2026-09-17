@@ -1,5 +1,6 @@
 const PROCESSED_IDS_KEY = 'ATELYS_PROCESSED_GMAIL_MESSAGE_IDS';
 const MAX_PROCESSED_IDS = 2000;
+const MAX_REPLY_TEXT_CHARS = 12000;
 
 /**
  * Relay inbound replies from the Gmail inbox receiving contact@atelys-digital.com
@@ -43,6 +44,8 @@ function relayAtelysReplies() {
     messages.sort((a, b) => a.message.getDate().getTime() - b.message.getDate().getTime());
 
     messages.forEach(({ message, id, fromEmail }) => {
+      const plainBody = extractFreshReplyText_(message.getPlainBody());
+      const rfcMessageId = String(message.getHeader('Message-ID') || '').trim() || null;
       const response = UrlFetchApp.fetch(config.webhookUrl, {
         method: 'post',
         contentType: 'application/json',
@@ -54,6 +57,8 @@ function relayAtelysReplies() {
           fromEmail,
           receivedAt: message.getDate().toISOString(),
           subject: message.getSubject() || null,
+          bodyText: plainBody || null,
+          replyToMessageId: rfcMessageId,
           messageId: `gmail:${id}`,
         }),
       });
@@ -72,6 +77,27 @@ function relayAtelysReplies() {
   } finally {
     lock.releaseLock();
   }
+}
+
+/** Keep the new human reply and drop the quoted history as much as possible. */
+function extractFreshReplyText_(body) {
+  const raw = String(body || '').replace(/\r/g, '').slice(0, MAX_REPLY_TEXT_CHARS);
+  if (!raw.trim()) return '';
+
+  const lines = raw.split('\n');
+  const fresh = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^>/.test(trimmed)) continue;
+    if (/^on .+wrote:$/i.test(trimmed)) break;
+    if (/^le .+a [ée]crit\s*:/i.test(trimmed)) break;
+    if (/^-{2,}\s*message (d'origine|original)\s*-{2,}$/i.test(trimmed)) break;
+    if (/^from:\s/i.test(trimmed) && fresh.length > 0) break;
+    if (/^de\s*:\s/i.test(trimmed) && fresh.length > 0) break;
+    fresh.push(line);
+  }
+
+  return fresh.join('\n').trim().slice(0, MAX_REPLY_TEXT_CHARS);
 }
 
 /** Run once after configuring Script Properties. Creates a 5-minute trigger. */
@@ -107,6 +133,7 @@ function testAtelysReplyRelayConfig() {
       fromEmail: 'reply-relay-test@invalid.example',
       receivedAt: new Date().toISOString(),
       subject: 'Atelys reply relay configuration test',
+      bodyText: 'Configuration test only',
       messageId: `relay-test:${Date.now()}`,
     }),
   });

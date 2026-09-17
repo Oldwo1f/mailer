@@ -106,6 +106,21 @@ export class Prospect {
   @Column({ type: 'varchar', nullable: true })
   lastReplyMessageId: string | null;
 
+  @Column({ type: 'varchar', nullable: true })
+  lastReplyIntent: string | null;
+
+  @Column({ type: 'real', nullable: true })
+  lastReplyConfidence: number | null;
+
+  @Column({ type: 'text', nullable: true })
+  lastReplySnippet: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  nextCommercialAction: string | null;
+
+  @Column({ type: 'datetime', nullable: true })
+  autoReplySentAt: Date | null;
+
   @Column({ type: 'datetime', nullable: true })
   wonAt: Date | null;
 
