@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { join } from 'path';
 import { Prospect } from './entities/prospect.entity';
@@ -44,6 +45,9 @@ import { UsageController } from './quota/usage.controller';
 import { DiscoveryJob } from './entities/discovery-job.entity';
 import { DiscoverService } from './discover/discover.service';
 import { DiscoverController } from './discover/discover.controller';
+import { AuthController } from './auth/auth.controller';
+import { AuthGuard } from './auth/auth.guard';
+import { AuthService } from './auth/auth.service';
 
 const entities = [
   Prospect,
@@ -79,6 +83,7 @@ const entities = [
     TypeOrmModule.forFeature(entities),
   ],
   controllers: [
+    AuthController,
     HealthController,
     ProspectsController,
     ListsController,
@@ -93,6 +98,11 @@ const entities = [
     DiscoverController,
   ],
   providers: [
+    AuthService,
+    {
+      provide: APP_GUARD,
+      useClass: AuthGuard,
+    },
     SeedService,
     SettingsService,
     QuotaService,
