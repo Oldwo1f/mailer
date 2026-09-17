@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Prospect, type LeadStatus } from '../entities/prospect.entity';
 import { Send } from '../entities/send.entity';
+import { MailService } from '../mail/mail.service';
 import {
   statusAfterDetectedReply,
   statusAfterSuccessfulSend,
@@ -13,15 +14,32 @@ import {
   type RadarSendMetrics,
 } from './aurel-radar';
 import { ProductMarketService } from './product-market.service';
+import { classifyReply, type ReplyAnalysis } from './reply-intelligence';
+import { buildAutoReplyMessage } from './reply-autopilot';
+
+const STAGE_RANK: Record<LeadStatus, number> = {
+  new: 0,
+  contacted: 1,
+  replied: 2,
+  interested: 3,
+  demo: 4,
+  meeting: 5,
+  quote: 6,
+  won: 7,
+  lost: -1,
+};
 
 @Injectable()
 export class CommercialPipelineService {
+  private readonly logger = new Logger(CommercialPipelineService.name);
+
   constructor(
     @InjectRepository(Prospect)
     private readonly prospects: Repository<Prospect>,
     @InjectRepository(Send)
     private readonly sends: Repository<Send>,
     private readonly productMarkets: ProductMarketService,
+    private readonly mail: MailService,
   ) {}
 
   list() {
@@ -140,6 +158,10 @@ export class CommercialPipelineService {
           idealCustomers: market?.idealCustomers || [],
           buyingSignals: market?.buyingSignals || [],
           objections: market?.objections || [],
+          replyIntent: prospect?.lastReplyIntent || null,
+          replyConfidence: prospect?.lastReplyConfidence || null,
+          nextCommercialAction: prospect?.nextCommercialAction || null,
+          autoReplySentAt: prospect?.autoReplySentAt || null,
         };
       }),
     );
@@ -150,7 +172,9 @@ export class CommercialPipelineService {
         ...radar.summary,
         autopilotEligible: items.filter((item) => item.autopilotEnabled).length,
         blockedByMarket: items.filter(
-          (item) => Boolean(byId.get(item.prospectId)?.productRecommendation?.productId) && !item.marketEligible,
+          (item) =>
+            Boolean(byId.get(item.prospectId)?.productRecommendation?.productId) &&
+            !item.marketEligible,
         ).length,
       },
       items,
@@ -207,16 +231,37 @@ export class CommercialPipelineService {
     }
   }
 
+  private applyReplyStatus(prospect: Prospect, analysis: ReplyAnalysis) {
+    const current = prospect.leadStatus || 'new';
+
+    if (analysis.intent === 'unsubscribe' || analysis.intent === 'not_interested') {
+      if (current !== 'won') prospect.leadStatus = 'lost';
+      return;
+    }
+
+    if (current === 'won') return;
+    if (current === 'lost') {
+      prospect.leadStatus = analysis.suggestedStatus;
+      return;
+    }
+
+    const suggested = analysis.suggestedStatus;
+    prospect.leadStatus =
+      STAGE_RANK[suggested] > STAGE_RANK[current] ? suggested : current;
+  }
+
   async recordInboundReply(input: {
     fromEmail: string;
     receivedAt?: Date | null;
     subject?: string | null;
+    bodyText?: string | null;
+    replyToMessageId?: string | null;
     messageId?: string | null;
   }) {
     const email = input.fromEmail.trim().toLowerCase();
     const sent = await this.sends.find({
       where: { status: 'sent' },
-      relations: ['prospect'],
+      relations: ['prospect', 'campaign', 'campaign.sender'],
       order: { sentAt: 'DESC' },
     });
     const match = sent.find((row) => row.toEmail.trim().toLowerCase() === email);
@@ -230,14 +275,39 @@ export class CommercialPipelineService {
       prospect.lastReplyMessageId &&
       prospect.lastReplyMessageId === input.messageId
     ) {
-      return { ok: true, matched: true, duplicate: true, prospectId: prospect.id };
+      return {
+        ok: true,
+        matched: true,
+        duplicate: true,
+        prospectId: prospect.id,
+        replyIntent: prospect.lastReplyIntent,
+      };
     }
+
+    const analysis = classifyReply({
+      subject: input.subject,
+      bodyText: input.bodyText,
+    });
 
     prospect.replyDetectedAt = input.receivedAt || new Date();
     prospect.lastReplyFrom = email;
     prospect.lastReplySubject = input.subject?.trim().slice(0, 500) || null;
     prospect.lastReplyMessageId = input.messageId?.trim().slice(0, 500) || null;
-    prospect.leadStatus = statusAfterDetectedReply(prospect.leadStatus);
+    prospect.lastReplyIntent = analysis.intent;
+    prospect.lastReplyConfidence = analysis.confidence;
+    prospect.lastReplySnippet = input.bodyText?.trim().slice(0, 1200) || null;
+    prospect.nextCommercialAction = analysis.nextAction;
+
+    if (analysis.intent === 'unsubscribe') {
+      prospect.unsubscribedAt = prospect.unsubscribedAt || new Date();
+      prospect.lostReason = 'Désinscription demandée par email';
+    } else if (analysis.intent === 'not_interested') {
+      prospect.lostReason = 'Refus commercial explicite par email';
+    } else if (prospect.leadStatus !== 'lost') {
+      prospect.lostReason = null;
+    }
+
+    this.applyReplyStatus(prospect, analysis);
     await this.prospects.save(prospect);
 
     await this.sends
@@ -248,12 +318,79 @@ export class CommercialPipelineService {
       .andWhere('status = :status', { status: 'queued' })
       .execute();
 
+    let autoReplySent = false;
+    let autoReplyError: string | null = null;
+
+    try {
+      const recommendation = prospect.productRecommendation;
+      const reviewed =
+        recommendation &&
+        ['accepted', 'overridden'].includes(recommendation.reviewState);
+      const marketId = prospect.marketId || 'pf';
+      const market = reviewed
+        ? await this.productMarkets.get(recommendation.productId, marketId)
+        : null;
+
+      if (
+        reviewed &&
+        market?.enabled &&
+        market.autopilotEnabled &&
+        recommendation.productId !== 'custom-atelys' &&
+        match.campaign?.sender
+      ) {
+        const message = buildAutoReplyMessage({
+          analysis,
+          contactName: prospect.contactName,
+          productName: recommendation.productName,
+          priceLabel: market.effectivePriceLabel,
+          productUrl: recommendation.productUrl,
+          demoUrls: prospect.demoPreparation?.artifactUrls || [],
+          originalSubject: input.subject,
+        });
+
+        if (message) {
+          const sender = match.campaign.sender;
+          const headers: Record<string, string> = {};
+          if (input.replyToMessageId?.trim()) {
+            headers['In-Reply-To'] = input.replyToMessageId.trim();
+            headers.References = input.replyToMessageId.trim();
+          }
+
+          await this.mail.send({
+            to: email,
+            subject: message.subject,
+            text: message.text,
+            html: message.html,
+            from: `${sender.name} <${sender.email}>`,
+            replyTo: sender.replyTo || sender.email,
+            ...(Object.keys(headers).length ? { headers } : {}),
+          });
+
+          prospect.autoReplySentAt = new Date();
+          prospect.nextCommercialAction =
+            analysis.intent === 'later'
+              ? 'Réponse automatique envoyée — attendre avant toute nouvelle relance.'
+              : 'Réponse automatique envoyée — surveiller le prochain retour du prospect.';
+          await this.prospects.save(prospect);
+          autoReplySent = true;
+        }
+      }
+    } catch (err) {
+      autoReplyError = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `Reply Autopilot ${prospect.id}: ${autoReplyError.slice(0, 240)}`,
+      );
+    }
+
     return {
       ok: true,
       matched: true,
       duplicate: false,
       prospectId: prospect.id,
       leadStatus: prospect.leadStatus,
+      analysis,
+      autoReplySent,
+      autoReplyError,
     };
   }
 }
