@@ -82,8 +82,9 @@ jobs:
           set -euo pipefail
 
           echo "=== Aurel live smoke: acquisition progress ==="
-          for i in $(seq 1 12); do
-            SNAPSHOT="$(docker exec mailer-backend node - <<'NODE'
+          EMPTY_POLLS=0
+          for i in $(seq 1 8); do
+            SNAPSHOT="$(docker exec -i mailer-backend node - <<'NODE'
           const Database = require('better-sqlite3');
           const db = new Database('/app/data/mailer.sqlite', { readonly: true });
           const job = db.prepare(`
@@ -96,7 +97,7 @@ jobs:
             LIMIT 1
           `).get();
           if (!job) {
-            console.log(JSON.stringify({ found: false }));
+            console.log(JSON.stringify({ found: false, status: 'none' }));
           } else {
             console.log(JSON.stringify({
               found: true,
@@ -118,16 +119,24 @@ jobs:
           }
           NODE
           )"
-            echo "poll ${i}/12: ${SNAPSHOT}"
+            echo "poll ${i}/8: ${SNAPSHOT}"
             STATUS="$(printf '%s' "$SNAPSHOT" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).status||'none')}catch{console.log('parse-error')}})")"
             if [ "$STATUS" = "done" ] || [ "$STATUS" = "error" ] || [ "$STATUS" = "cancelled" ]; then
               break
             fi
+            if [ "$STATUS" = "none" ]; then
+              EMPTY_POLLS=$((EMPTY_POLLS + 1))
+              if [ "$EMPTY_POLLS" -ge 2 ]; then
+                break
+              fi
+            else
+              EMPTY_POLLS=0
+            fi
             sleep 30
           done
 
-          echo "=== Aurel live smoke: durable state ==="
-          docker exec mailer-backend node - <<'NODE'
+          echo "=== Aurel live smoke: durable state + blockers ==="
+          docker exec -i mailer-backend node - <<'NODE'
           const Database = require('better-sqlite3');
           const db = new Database('/app/data/mailer.sqlite', { readonly: true });
           const job = db.prepare(`
@@ -140,7 +149,14 @@ jobs:
             LIMIT 1
           `).get();
 
-          const report = { latestAcquisition: null, campaigns: [], sendCounts: {}, recentAurelActions: [] };
+          const report = {
+            latestAcquisition: null,
+            campaigns: [],
+            sendCounts: {},
+            recentAurelActions: [],
+            blockers: {},
+          };
+
           if (job) {
             let campaignIds = [];
             try { campaignIds = JSON.parse(job.aurelCampaignIds || '[]'); } catch {}
@@ -187,11 +203,54 @@ jobs:
             LIMIT 20
           `).all();
 
+          const settingsRow = db.prepare(`SELECT values FROM app_settings WHERE id = 'default'`).get();
+          let settings = {};
+          try { settings = JSON.parse(settingsRow?.values || '{}'); } catch {}
+          const marketRows = db.prepare(`
+            SELECT productId, marketId, enabled, autopilotEnabled, currency
+            FROM product_market_settings
+            WHERE marketId = 'pf'
+            ORDER BY productId
+          `).all();
+          const senderCounts = db.prepare(`
+            SELECT COUNT(*) AS total,
+                   SUM(CASE WHEN isDefault = 1 THEN 1 ELSE 0 END) AS defaults
+            FROM sender_identities
+          `).get();
+          const recentJobs = db.prepare(`
+            SELECT status, listName, found, searches, createdAt, finishedAt
+            FROM discovery_jobs
+            ORDER BY createdAt DESC
+            LIMIT 5
+          `).all();
+          const searchKeys = [
+            'tavilyApiKey', 'youApiKey', 'nimbleApiKey',
+            'firecrawlApiKey', 'serpapiApiKey', 'exaApiKey'
+          ];
+          const envConfigured = Boolean(
+            process.env.TAVILY_API_KEY || process.env.YDC_API_KEY || process.env.YOU_API_KEY ||
+            process.env.NIMBLE_API_KEY || process.env.FIRECRAWL_API_KEY ||
+            process.env.SERPAPI_API_KEY || process.env.EXA_API_KEY
+          );
+
+          report.blockers = {
+            acquisitionPolicy: {
+              enabled: settings.aurelAcquisitionEnabled !== false,
+              minHours: Number(settings.aurelAcquisitionMinHours || 12),
+              maxRuns24h: Number(settings.aurelAcquisitionMaxRuns24h || 2),
+              autoAcceptHighConfidence: settings.aurelAcquisitionAutoAcceptHighConfidence !== false,
+            },
+            pfMarkets: marketRows,
+            senderCounts,
+            searchProviderConfigured: envConfigured || searchKeys.some(k => typeof settings[k] === 'string' && settings[k].trim()),
+            recentJobs,
+          };
+
           console.log(JSON.stringify(report, null, 2));
           NODE
 
           echo "=== Aurel live smoke: relevant backend logs ==="
           docker logs --since 12m mailer-backend 2>&1 \
-            | grep -E 'Aurel acquisition|Acquisition tick|campaign|autopilot|Reply|follow-up' \
-            | tail -n 180 || true
+            | grep -E 'Aurel acquisition|Acquisition tick|campaign|autopilot|Reply|follow-up|quota|provider' \
+            | tail -n 220 || true
           REMOTE
