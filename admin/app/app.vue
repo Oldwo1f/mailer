@@ -1,12 +1,34 @@
 <script setup lang="ts">
+import Button from 'primevue/button'
 import Toast from 'primevue/toast'
 import ConfirmDialog from 'primevue/confirmdialog'
 
 useHead({ title: 'Mailer' })
+
+const route = useRoute()
+const router = useRouter()
+const { api } = useApi()
+const loggingOut = ref(false)
+
+const isLoginPage = computed(() => route.path === '/login')
+
+async function logout() {
+  loggingOut.value = true
+  try {
+    await api('auth/logout', { method: 'POST' })
+  } catch {
+    // If the session already expired, redirect to login anyway.
+  } finally {
+    loggingOut.value = false
+    await router.push('/login')
+  }
+}
 </script>
 
 <template>
-  <div class="shell">
+  <NuxtPage v-if="isLoginPage" />
+
+  <div v-else class="shell">
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-icon">
@@ -37,20 +59,30 @@ useHead({ title: 'Mailer' })
           <i class="pi pi-cog" /> Config
         </NuxtLink>
       </nav>
-      <div class="sidebar-foot muted">Prospection · IA · envoi</div>
+      <div class="sidebar-foot">
+        <span class="muted">Prospection · IA · envoi</span>
+        <Button
+          icon="pi pi-sign-out"
+          label="Déconnexion"
+          text
+          size="small"
+          severity="secondary"
+          :loading="loggingOut"
+          @click="logout"
+        />
+      </div>
     </aside>
     <main class="main">
       <NuxtPage />
     </main>
-    <Toast position="top-right" />
-    <ConfirmDialog />
   </div>
+  <Toast position="top-right" />
+  <ConfirmDialog />
 </template>
 
 <style scoped>
 .shell {
   display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
   grid-template-columns: var(--mailer-sidebar-width, 248px) minmax(0, 1fr);
   min-height: 100vh;
   min-height: 100dvh;
@@ -145,9 +177,16 @@ nav a.active {
 }
 
 .sidebar-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
   font-size: 0.72rem;
-  padding: 0.75rem 0.55rem 0.25rem;
+  padding: 0.75rem 0.25rem 0.25rem;
   border-top: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.sidebar-foot .muted {
+  padding: 0 0.3rem;
   color: #64748b;
 }
 
@@ -200,6 +239,12 @@ nav a.active {
   }
 
   .sidebar-foot {
+    flex-direction: row;
+    border-top: none;
+    padding: 0;
+  }
+
+  .sidebar-foot .muted {
     display: none;
   }
 
