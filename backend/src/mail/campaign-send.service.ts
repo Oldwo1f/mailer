@@ -12,6 +12,8 @@ import { MailService } from './mail.service';
 import { SettingsService } from '../settings/settings.service';
 import { QuotaService } from '../quota/quota.service';
 import { QuotaExhaustedError } from '../quota/quota.types';
+import { CommercialPipelineService } from '../commercial/commercial-pipeline.service';
+import { shouldSuppressOutbound } from '../commercial/commercial.rules';
 
 @Injectable()
 export class CampaignSendService {
@@ -32,6 +34,7 @@ export class CampaignSendService {
     private readonly mail: MailService,
     private readonly settings: SettingsService,
     private readonly quota: QuotaService,
+    private readonly commercial: CommercialPipelineService,
   ) {}
 
   isRunning(campaignId: string) {
@@ -91,7 +94,11 @@ export class CampaignSendService {
     });
 
     const toSend = approvedDrafts.filter(
-      (d) => d.prospect && !d.prospect.unsubscribedAt && d.subject && d.html,
+      (d) =>
+        d.prospect &&
+        !shouldSuppressOutbound(d.prospect) &&
+        d.subject &&
+        d.html,
     );
     if (!toSend.length) {
       throw new Error('Aucun brouillon approuvé à envoyer');
@@ -178,9 +185,11 @@ export class CampaignSendService {
         const next = await qb.getOne();
         if (!next) break;
 
-        if (next.prospect?.unsubscribedAt) {
+        if (next.prospect && shouldSuppressOutbound(next.prospect)) {
           next.status = 'skipped';
-          next.error = 'Désinscrit';
+          next.error = next.prospect.unsubscribedAt
+            ? 'Désinscrit'
+            : 'Réponse ou avancée commerciale détectée — relance stoppée';
           await this.sends.save(next);
           continue;
         }
@@ -222,6 +231,7 @@ export class CampaignSendService {
           next.sentAt = new Date();
           next.error = null;
           await this.sends.save(next);
+          await this.commercial.markSuccessfulSend(next.prospectId);
         } catch (err) {
           if (err instanceof QuotaExhaustedError) {
             next.status = 'queued';
