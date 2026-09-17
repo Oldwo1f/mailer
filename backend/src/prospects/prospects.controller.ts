@@ -11,11 +11,14 @@ import {
 import {
   IsArray,
   IsBoolean,
+  IsIn,
   IsOptional,
   IsString,
   IsUUID,
 } from 'class-validator';
 import { EnrichmentService, ProspectsService } from './prospects.service';
+import { ProductMatcherService } from '../product-matcher/product-matcher.service';
+import type { ProductReviewState } from '../product-matcher/product-matcher.types';
 
 class CreateProspectDto {
   @IsString()
@@ -67,11 +70,31 @@ class EnrichManyDto {
   ids: string[];
 }
 
+class MatchManyDto {
+  @IsArray()
+  @IsUUID('4', { each: true })
+  ids: string[];
+}
+
+class ReviewProductDto {
+  @IsIn(['unreviewed', 'accepted', 'overridden', 'rejected'])
+  reviewState: ProductReviewState;
+
+  @IsOptional()
+  @IsString()
+  productId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  note?: string | null;
+}
+
 @Controller('prospects')
 export class ProspectsController {
   constructor(
     private readonly prospects: ProspectsService,
     private readonly enrichment: EnrichmentService,
+    private readonly matcher: ProductMatcherService,
   ) {}
 
   @Get()
@@ -92,9 +115,19 @@ export class ProspectsController {
     });
   }
 
+  @Get('product-catalog')
+  productCatalog() {
+    return this.matcher.catalog();
+  }
+
   @Post('enrich')
   enrichMany(@Body() dto: EnrichManyDto) {
     return this.enrichment.enrichMany(dto.ids);
+  }
+
+  @Post('match-products')
+  matchMany(@Body() dto: MatchManyDto) {
+    return this.matcher.matchMany(dto.ids);
   }
 
   @Get(':id')
@@ -120,5 +153,15 @@ export class ProspectsController {
   @Post(':id/enrich')
   enrichOne(@Param('id') id: string) {
     return this.enrichment.enrichOne(id);
+  }
+
+  @Post(':id/match-product')
+  matchProduct(@Param('id') id: string) {
+    return this.matcher.matchOne(id);
+  }
+
+  @Patch(':id/product-recommendation')
+  reviewProduct(@Param('id') id: string, @Body() dto: ReviewProductDto) {
+    return this.matcher.review(id, dto);
   }
 }
