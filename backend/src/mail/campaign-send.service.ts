@@ -79,24 +79,22 @@ export class CampaignSendService {
       throw new Error('Choisissez un expéditeur avant d’envoyer');
     }
 
-    const where: Array<Record<string, unknown>> = [
-      { campaignId, status: 'ready' },
-      { campaignId, status: 'approved' },
-    ];
-    if (stepId) {
-      for (const w of where) w.stepId = stepId;
-    }
+    const where: Record<string, unknown> = {
+      campaignId,
+      status: 'approved',
+    };
+    if (stepId) where.stepId = stepId;
 
-    const readyDrafts = await this.drafts.find({
+    const approvedDrafts = await this.drafts.find({
       where: where as any,
       relations: ['prospect'],
     });
 
-    const toSend = readyDrafts.filter(
+    const toSend = approvedDrafts.filter(
       (d) => d.prospect && !d.prospect.unsubscribedAt && d.subject && d.html,
     );
     if (!toSend.length) {
-      throw new Error('Aucun brouillon prêt à envoyer');
+      throw new Error('Aucun brouillon approuvé à envoyer');
     }
 
     for (const draft of toSend) {
@@ -391,7 +389,6 @@ function injectTracking(html: string, token: string, publicUrl: string): string 
   if (/<\/body>/i.test(out)) {
     out = out.replace(/<\/body>/i, `${pixel}${unsub}</body>`);
   } else if (/mailer-email/i.test(out) && /<\/table>\s*$/i.test(out)) {
-    // Append unsubscribe below the centered card wrapper
     out = `${out}<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;background-color:#f3f4f6;"><tr><td align="center" style="padding:0 12px 24px;">${unsub}${pixel}</td></tr></table>`;
   } else {
     out = `${out}${pixel}${unsub}`;
