@@ -27,4 +27,13 @@ describe('reply intelligence', () => {
     expect(result.intent).toBe('question');
     expect(result.autoReplyAllowed).toBe(false);
   });
+
+  it('schedules an explicit deferred follow-up', () => {
+    const result = classifyReply({
+      bodyText: 'Pas maintenant, recontactez-moi dans 2 mois.',
+      receivedAt: new Date('2026-09-17T10:00:00.000Z'),
+    });
+    expect(result.intent).toBe('later');
+    expect(result.followUpAt).toBe('2026-11-17T10:00:00.000Z');
+  });
 });
