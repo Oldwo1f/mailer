@@ -6,7 +6,6 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import {
   createHash,
   randomBytes,
@@ -34,8 +33,6 @@ export class AuthService {
   private readonly logger = new Logger(AuthService.name);
   private readonly sessions = new Map<string, SessionRecord>();
   private readonly failures = new Map<string, FailureRecord>();
-
-  constructor(private readonly config: ConfigService) {}
 
   async login(password: string, clientKey: string): Promise<string> {
     this.assertLoginAllowed(clientKey);
@@ -107,7 +104,7 @@ export class AuthService {
   }
 
   private async verifyPassword(password: string): Promise<boolean> {
-    const encoded = this.config.get<string>('ADMIN_PASSWORD_SCRYPT')?.trim();
+    const encoded = process.env.ADMIN_PASSWORD_SCRYPT?.trim();
     if (!encoded) {
       throw new ServiceUnavailableException(
         'ADMIN_PASSWORD_SCRYPT manquant sur le serveur',
@@ -177,31 +174,24 @@ export class AuthService {
     }
   }
 
+  private envNumber(name: string, fallback: number) {
+    const value = Number(process.env[name]);
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+  }
+
   private idleMinutes() {
-    return Math.max(
-      5,
-      Number(this.config.get('AUTH_IDLE_MINUTES') || 30),
-    );
+    return Math.max(5, this.envNumber('AUTH_IDLE_MINUTES', 30));
   }
 
   private absoluteHours() {
-    return Math.max(
-      1,
-      Number(this.config.get('AUTH_ABSOLUTE_HOURS') || 12),
-    );
+    return Math.max(1, this.envNumber('AUTH_ABSOLUTE_HOURS', 12));
   }
 
   private maxLoginAttempts() {
-    return Math.max(
-      3,
-      Number(this.config.get('AUTH_LOGIN_MAX_ATTEMPTS') || 5),
-    );
+    return Math.max(3, this.envNumber('AUTH_LOGIN_MAX_ATTEMPTS', 5));
   }
 
   private loginWindowMinutes() {
-    return Math.max(
-      1,
-      Number(this.config.get('AUTH_LOGIN_WINDOW_MINUTES') || 15),
-    );
+    return Math.max(1, this.envNumber('AUTH_LOGIN_WINDOW_MINUTES', 15));
   }
 }
