@@ -21,10 +21,7 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const forwarded = req.headers['x-forwarded-for'];
-    const clientKey = Array.isArray(forwarded)
-      ? forwarded[0]
-      : forwarded?.split(',')[0]?.trim() || req.ip || 'unknown';
+    const clientKey = req.ip || req.socket.remoteAddress || 'unknown';
     const token = await this.auth.login(dto.password, clientKey);
     const production = process.env.NODE_ENV === 'production';
 
