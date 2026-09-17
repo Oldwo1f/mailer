@@ -1,5 +1,6 @@
 const PROCESSED_IDS_KEY = 'ATELYS_PROCESSED_GMAIL_MESSAGE_IDS';
 const MAX_PROCESSED_IDS = 2000;
+const MAX_REPLY_TEXT_CHARS = 12000;
 
 /**
  * Relay inbound replies from the Gmail inbox receiving contact@atelys-digital.com
@@ -43,6 +44,8 @@ function relayAtelysReplies() {
     messages.sort((a, b) => a.message.getDate().getTime() - b.message.getDate().getTime());
 
     messages.forEach(({ message, id, fromEmail }) => {
+      const plainBody = String(message.getPlainBody() || '').slice(0, MAX_REPLY_TEXT_CHARS);
+      const rfcMessageId = String(message.getHeader('Message-ID') || '').trim() || null;
       const response = UrlFetchApp.fetch(config.webhookUrl, {
         method: 'post',
         contentType: 'application/json',
@@ -54,6 +57,8 @@ function relayAtelysReplies() {
           fromEmail,
           receivedAt: message.getDate().toISOString(),
           subject: message.getSubject() || null,
+          bodyText: plainBody || null,
+          replyToMessageId: rfcMessageId,
           messageId: `gmail:${id}`,
         }),
       });
@@ -107,6 +112,7 @@ function testAtelysReplyRelayConfig() {
       fromEmail: 'reply-relay-test@invalid.example',
       receivedAt: new Date().toISOString(),
       subject: 'Atelys reply relay configuration test',
+      bodyText: 'Configuration test only',
       messageId: `relay-test:${Date.now()}`,
     }),
   });
