@@ -38,6 +38,11 @@ export class CommercialPipelineController {
     return this.pipeline.productAnalytics();
   }
 
+  @Get('radar')
+  radar() {
+    return this.pipeline.radar();
+  }
+
   @Patch('prospects/:id')
   update(@Param('id') id: string, @Body() dto: UpdateCommercialDto) {
     return this.pipeline.updateProspect(id, dto);
