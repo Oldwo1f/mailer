@@ -1,4 +1,4 @@
-import { buildRecommendation } from './product-matcher.service';
+import { buildRecommendation } from './product-matcher.engine';
 import type { Prospect } from '../entities/prospect.entity';
 
 function prospect(partial: Partial<Prospect>): Prospect {
