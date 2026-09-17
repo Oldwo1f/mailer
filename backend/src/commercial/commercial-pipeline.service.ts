@@ -12,6 +12,7 @@ import {
   buildAurelRadar,
   type RadarSendMetrics,
 } from './aurel-radar';
+import { ProductMarketService } from './product-market.service';
 
 @Injectable()
 export class CommercialPipelineService {
@@ -20,6 +21,7 @@ export class CommercialPipelineService {
     private readonly prospects: Repository<Prospect>,
     @InjectRepository(Send)
     private readonly sends: Repository<Send>,
+    private readonly productMarkets: ProductMarketService,
   ) {}
 
   list() {
@@ -90,7 +92,69 @@ export class CommercialPipelineService {
       metrics.set(send.prospectId, current);
     }
 
-    return buildAurelRadar(prospects, metrics);
+    const radar = buildAurelRadar(prospects, metrics);
+    const byId = new Map(prospects.map((prospect) => [prospect.id, prospect]));
+
+    const items = await Promise.all(
+      radar.items.map(async (item) => {
+        const prospect = byId.get(item.prospectId);
+        const marketId = prospect?.marketId || 'pf';
+        const productId = prospect?.productRecommendation?.productId || null;
+        const market = productId
+          ? await this.productMarkets.get(productId, marketId)
+          : null;
+        const marketEligible = Boolean(market?.enabled);
+        const autopilotEnabled = Boolean(
+          market?.enabled && market?.autopilotEnabled,
+        );
+
+        if (productId && market && !marketEligible) {
+          return {
+            ...item,
+            marketId,
+            marketName: market.marketName,
+            currency: market.currency,
+            priceLabel: market.effectivePriceLabel,
+            marketEligible,
+            autopilotEnabled,
+            idealCustomers: market.idealCustomers,
+            buyingSignals: market.buyingSignals,
+            objections: market.objections,
+            nextAction:
+              'Marché verrouillé pour ce produit — aucune prospection automatique.',
+            demoEligible: false,
+            demoMode: 'none' as const,
+            demoReason:
+              'Produit non activé commercialement sur ce marché : aucune énergie de démo.',
+          };
+        }
+
+        return {
+          ...item,
+          marketId,
+          marketName: market?.marketName || null,
+          currency: market?.currency || null,
+          priceLabel: market?.effectivePriceLabel || null,
+          marketEligible,
+          autopilotEnabled,
+          idealCustomers: market?.idealCustomers || [],
+          buyingSignals: market?.buyingSignals || [],
+          objections: market?.objections || [],
+        };
+      }),
+    );
+
+    return {
+      ...radar,
+      summary: {
+        ...radar.summary,
+        autopilotEligible: items.filter((item) => item.autopilotEnabled).length,
+        blockedByMarket: items.filter(
+          (item) => Boolean(byId.get(item.prospectId)?.productRecommendation?.productId) && !item.marketEligible,
+        ).length,
+      },
+      items,
+    };
   }
 
   async updateProspect(

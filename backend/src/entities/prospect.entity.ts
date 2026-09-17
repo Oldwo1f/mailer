@@ -63,6 +63,13 @@ export class Prospect {
   @Column({ type: 'varchar', nullable: true })
   contactName: string | null;
 
+  /**
+   * Explicit commercial market. Existing prospects are Polynesian by default.
+   * Future France/EUR prospecting must set this to `fr` instead of reusing PF rules.
+   */
+  @Column({ type: 'varchar', default: 'pf' })
+  marketId: string;
+
   @Column({ type: 'simple-json', nullable: true })
   profile: ProspectProfile | null;
 
