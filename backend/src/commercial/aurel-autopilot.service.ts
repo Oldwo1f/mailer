@@ -12,6 +12,9 @@ import { CampaignSendService } from '../mail/campaign-send.service';
 import { shouldSuppressOutbound } from './commercial.rules';
 import { ProductMarketService } from './product-market.service';
 
+// Never retroactively send an old review backlog when Autopilot is first deployed.
+const AUTOPILOT_V1_LAUNCH_AT = new Date('2026-09-17T09:30:00.000Z');
+
 /**
  * Executes low-risk commercial decisions that Adrien/Alexis delegated to Aurel.
  *
@@ -20,7 +23,8 @@ import { ProductMarketService } from './product-market.service';
  * - once drafts exist, no human approval is required for eligible PF products;
  * - only reviewed Product Matcher recommendations can enter Autopilot;
  * - unsubscribe/reply/commercial-progress suppression remains authoritative;
- * - disabled product markets never send.
+ * - disabled product markets never send;
+ * - campaigns created before Autopilot v1 are never sent retroactively.
  */
 @Injectable()
 export class AurelAutopilotService implements OnModuleInit, OnModuleDestroy {
@@ -57,6 +61,9 @@ export class AurelAutopilotService implements OnModuleInit, OnModuleDestroy {
       });
 
       for (const campaign of reviewCampaigns) {
+        if (!campaign.createdAt || campaign.createdAt < AUTOPILOT_V1_LAUNCH_AT) {
+          continue;
+        }
         try {
           await this.processCampaign(campaign);
         } catch (err) {
