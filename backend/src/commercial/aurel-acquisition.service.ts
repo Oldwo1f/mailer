@@ -10,16 +10,20 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DiscoveryJob } from '../entities/discovery-job.entity';
 import { Prospect } from '../entities/prospect.entity';
+import { SenderIdentity } from '../entities/sender-identity.entity';
+import { Campaign } from '../entities/campaign.entity';
 import { DiscoverService } from '../discover/discover.service';
 import { ProductMatcherService } from '../product-matcher/product-matcher.service';
 import { QuotaService } from '../quota/quota.service';
 import { SettingsService } from '../settings/settings.service';
+import { CampaignsService } from '../campaigns/campaigns.service';
 import { buildCommercialLearning } from './commercial-learning';
 import {
   buildAcquisitionPlan,
   type AcquisitionMission,
 } from './acquisition-planner';
 import { ProductMarketService } from './product-market.service';
+import { AurelJournalService } from './aurel-journal.service';
 
 const ACQUISITION_LIST_PREFIX = 'Aurel acquisition · ';
 const DEFAULT_MIN_HOURS = 12;
@@ -38,22 +42,26 @@ export class AurelAcquisitionService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AurelAcquisitionService.name);
   private poller: ReturnType<typeof setInterval> | null = null;
   private running = false;
-  private readonly processedJobs = new Set<string>();
 
   constructor(
     @InjectRepository(Prospect)
     private readonly prospects: Repository<Prospect>,
     @InjectRepository(DiscoveryJob)
     private readonly jobs: Repository<DiscoveryJob>,
+    @InjectRepository(SenderIdentity)
+    private readonly senders: Repository<SenderIdentity>,
+    @InjectRepository(Campaign)
+    private readonly campaignRows: Repository<Campaign>,
     private readonly productMarkets: ProductMarketService,
     private readonly matcher: ProductMatcherService,
     private readonly discover: DiscoverService,
     private readonly quota: QuotaService,
     private readonly settings: SettingsService,
+    private readonly campaigns: CampaignsService,
+    private readonly journal: AurelJournalService,
   ) {}
 
   onModuleInit() {
-    // Short first delay so DB synchronization and the other pollers are already settled.
     setTimeout(() => void this.tick(), 45_000);
     this.poller = setInterval(() => void this.tick(), 15 * 60_000);
   }
@@ -227,12 +235,31 @@ export class AurelAcquisitionService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(
       `Aurel acquisition: ${mission.productName} / ${mission.activity} (${mission.strategy}, priorité ${mission.priority})`,
     );
-    return this.discover.start({
+    const job = await this.discover.start({
       keywords: mission.keywords,
       location: 'Polynésie française',
       newListName: listName,
       batchSize: 10,
     });
+    job.aurelMissionKey = mission.key;
+    job.aurelProductId = mission.productId;
+    job.aurelProductName = mission.productName;
+    job.aurelActivity = mission.activity;
+    job.aurelCampaignIds = null;
+    job.aurelPostProcessedAt = null;
+    await this.jobs.save(job);
+    await this.journal.log({
+      actionType: 'acquisition_started',
+      jobId: job.id,
+      summary: `Aurel lance une recherche ${mission.productName} / ${mission.activity}.`,
+      details: {
+        missionKey: mission.key,
+        strategy: mission.strategy,
+        priority: mission.priority,
+        batchSize: 10,
+      },
+    });
+    return job;
   }
 
   private async postProcessCompletedJobs() {
@@ -240,12 +267,12 @@ export class AurelAcquisitionService implements OnModuleInit, OnModuleDestroy {
     const completed = await this.jobs.find({
       where: { status: 'done' },
       order: { finishedAt: 'DESC' },
-      take: 20,
+      take: 30,
     });
     const acquisitionJobs = completed.filter(
       (job) =>
         job.listName?.startsWith(ACQUISITION_LIST_PREFIX) &&
-        !this.processedJobs.has(job.id),
+        !job.aurelPostProcessedAt,
     );
     if (!acquisitionJobs.length) return;
 
@@ -259,41 +286,265 @@ export class AurelAcquisitionService implements OnModuleInit, OnModuleDestroy {
     });
 
     for (const job of acquisitionJobs) {
-      const mission = plan.find((row) => row.keywords === job.keywords);
-      const ids = [...new Set((job.results?.prospects || []).map((p) => p.id))];
-      for (const id of ids) {
-        try {
-          const prospect = await this.matcher.matchOne(id);
-          const rec = prospect.productRecommendation;
-          if (
-            !policy.autoAcceptHighConfidence ||
-            !mission ||
-            !rec ||
-            rec.reviewState !== 'unreviewed' ||
-            rec.confidence !== 'high' ||
-            rec.score < 70 ||
-            rec.suggestedProductId !== mission.productId
-          ) {
-            continue;
+      try {
+        if (job.aurelCampaignIds?.length) {
+          const recovered = await this.recoverCampaigns(job);
+          if (recovered) {
+            job.aurelPostProcessedAt = new Date();
+            await this.jobs.save(job);
           }
-          const market = await this.productMarkets.get(
-            rec.suggestedProductId,
-            prospect.marketId || 'pf',
-          );
-          if (!market?.enabled || !market.autopilotEnabled) continue;
-          await this.matcher.review(id, {
-            reviewState: 'accepted',
-            note: `Validé automatiquement par Aurel Acquisition : correspondance forte avec la mission ${mission.productName} / ${mission.activity}.`,
-          });
-        } catch (err) {
-          this.logger.warn(
-            `Acquisition post-process ${id}: ${err instanceof Error ? err.message : String(err)}`,
-          );
+          continue;
         }
+
+        const mission =
+          plan.find((row) => row.key === job.aurelMissionKey) ||
+          plan.find((row) => row.keywords === job.keywords) ||
+          null;
+        if (!mission) {
+          await this.journal.log({
+            actionType: 'acquisition_handoff_blocked',
+            status: 'blocked',
+            jobId: job.id,
+            summary: `Mission commerciale introuvable pour ${job.listName}.`,
+          });
+          continue;
+        }
+
+        const ids = [
+          ...new Set(
+            (job.results?.prospects || [])
+              .filter((row) => row.created)
+              .map((row) => row.id),
+          ),
+        ];
+        const acceptedIds: string[] = [];
+
+        for (const id of ids) {
+          try {
+            let prospect = await this.matcher.matchOne(id);
+            let rec = prospect.productRecommendation;
+            if (
+              policy.autoAcceptHighConfidence &&
+              rec &&
+              rec.reviewState === 'unreviewed' &&
+              rec.confidence === 'high' &&
+              rec.score >= 70 &&
+              rec.suggestedProductId === mission.productId
+            ) {
+              const market = await this.productMarkets.get(
+                rec.suggestedProductId,
+                prospect.marketId || 'pf',
+              );
+              if (market?.enabled && market.autopilotEnabled) {
+                prospect = await this.matcher.review(id, {
+                  reviewState: 'accepted',
+                  note: `Validé automatiquement par Aurel Acquisition : correspondance forte avec la mission ${mission.productName} / ${mission.activity}.`,
+                });
+                rec = prospect.productRecommendation;
+                await this.journal.log({
+                  actionType: 'product_auto_accepted',
+                  prospectId: prospect.id,
+                  jobId: job.id,
+                  summary: `${prospect.company} validé automatiquement pour ${mission.productName}.`,
+                  details: { score: rec?.score || null, confidence: rec?.confidence || null },
+                });
+              }
+            }
+
+            if (
+              rec &&
+              ['accepted', 'overridden'].includes(rec.reviewState) &&
+              rec.productId === mission.productId &&
+              prospect.leadStatus === 'new' &&
+              !prospect.unsubscribedAt &&
+              !prospect.replyDetectedAt
+            ) {
+              acceptedIds.push(prospect.id);
+            }
+          } catch (err) {
+            this.logger.warn(
+              `Acquisition post-process ${id}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
+
+        if (!acceptedIds.length) {
+          job.aurelPostProcessedAt = new Date();
+          await this.jobs.save(job);
+          await this.journal.log({
+            actionType: 'acquisition_completed_no_campaign',
+            jobId: job.id,
+            summary: `${job.listName} terminé : aucun prospect assez sûr pour une campagne autonome.`,
+            details: { found: job.found, createdCandidates: ids.length },
+          });
+          continue;
+        }
+
+        const created = await this.createAutonomousCampaigns(
+          job,
+          mission,
+          acceptedIds,
+        );
+        if (!created.length) continue;
+
+        job.aurelCampaignIds = created;
+        await this.jobs.save(job);
+
+        let generatedAll = true;
+        for (const campaignId of created) {
+          try {
+            await this.campaigns.generate(campaignId);
+            await this.journal.log({
+              actionType: 'campaign_generated',
+              campaignId,
+              jobId: job.id,
+              summary: `Aurel a généré la campagne ${mission.productName} ; Autopilot peut maintenant l’envoyer.`,
+            });
+          } catch (err) {
+            generatedAll = false;
+            const message = err instanceof Error ? err.message : String(err);
+            await this.journal.log({
+              actionType: 'campaign_generation_failed',
+              status: 'error',
+              campaignId,
+              jobId: job.id,
+              summary: `La campagne automatique ${mission.productName} n’a pas pu être générée.`,
+              details: { error: message.slice(0, 500) },
+            });
+          }
+        }
+
+        if (generatedAll) {
+          job.aurelPostProcessedAt = new Date();
+          await this.jobs.save(job);
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Acquisition handoff ${job.id}: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
-      this.processedJobs.add(job.id);
     }
   }
+
+  private async createAutonomousCampaigns(
+    job: DiscoveryJob,
+    mission: AcquisitionMission,
+    prospectIds: string[],
+  ) {
+    const sender =
+      (await this.senders.findOne({ where: { isDefault: true } })) ||
+      (await this.senders.findOne({ order: { createdAt: 'ASC' } }));
+    if (!sender) {
+      await this.journal.log({
+        actionType: 'campaign_creation_blocked',
+        status: 'blocked',
+        jobId: job.id,
+        summary: `Aucune identité d’expéditeur : campagne ${mission.productName} non créée.`,
+      });
+      return [];
+    }
+
+    const market = await this.productMarkets.get(mission.productId, mission.marketId);
+    if (!market?.enabled || !market.autopilotEnabled) return [];
+
+    const sorted = [...new Set(prospectIds)].sort();
+    const variants: Array<{ label: string; ids: string[] }> =
+      sorted.length >= 6
+        ? [
+            { label: 'A', ids: sorted.filter((_, index) => index % 2 === 0) },
+            { label: 'B', ids: sorted.filter((_, index) => index % 2 === 1) },
+          ]
+        : [{ label: 'A', ids: sorted }];
+    const experimentKey = `acquisition:${job.id}`;
+    const campaignIds: string[] = [];
+
+    for (const variant of variants.filter((row) => row.ids.length)) {
+      const brief = buildCampaignBrief(mission, market.effectivePriceLabel, variant.label);
+      const followUp = buildFollowUpBrief(mission, variant.label);
+      const name = `Aurel · ${mission.productName} · ${mission.activity} · ${variant.label} · ${new Date().toISOString().slice(0, 10)}`;
+      const campaign = await this.campaigns.create({
+        name,
+        brief,
+        tone: 'professionnel',
+        emailType: 'classique',
+        language: 'fr',
+        senderId: sender.id,
+        prospectIds: variant.ids,
+        steps: [
+          { name: 'Premier contact', brief, delayDays: 0 },
+          { name: 'Relance courte', brief: followUp, delayDays: 4 },
+        ],
+      });
+      await this.campaignRows.update(campaign.id, {
+        aurelSource: 'acquisition',
+        experimentKey,
+        experimentVariant: variant.label,
+      });
+      campaignIds.push(campaign.id);
+      await this.journal.log({
+        actionType: 'campaign_created',
+        campaignId: campaign.id,
+        jobId: job.id,
+        summary: `Aurel a créé ${name} pour ${variant.ids.length} prospect(s).`,
+        details: {
+          productId: mission.productId,
+          activity: mission.activity,
+          experimentKey,
+          variant: variant.label,
+          prospects: variant.ids.length,
+        },
+      });
+    }
+
+    return campaignIds;
+  }
+
+  private async recoverCampaigns(job: DiscoveryJob) {
+    let allReady = true;
+    for (const campaignId of job.aurelCampaignIds || []) {
+      try {
+        const campaign = await this.campaigns.get(campaignId);
+        if (campaign.status === 'draft' || campaign.status === 'failed') {
+          await this.campaigns.generate(campaignId);
+          await this.journal.log({
+            actionType: 'campaign_recovered',
+            campaignId,
+            jobId: job.id,
+            summary: `Aurel a repris une campagne automatique interrompue.`,
+          });
+        } else if (campaign.status === 'generating') {
+          allReady = false;
+        }
+      } catch (err) {
+        allReady = false;
+        this.logger.warn(
+          `Campaign recovery ${campaignId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    return allReady;
+  }
+}
+
+function buildCampaignBrief(
+  mission: AcquisitionMission,
+  priceLabel: string | null,
+  variant: string,
+) {
+  const price = priceLabel ? ` Offre actuelle : ${priceLabel}.` : '';
+  const angle =
+    variant === 'B'
+      ? 'Commencer par un bénéfice concret de temps gagné et de simplicité, puis poser une seule question courte sur leur fonctionnement actuel.'
+      : 'Commencer par le problème métier probable lié à leur activité, rester très concret, puis proposer une prochaine étape simple sans pression.';
+  return `Prospection Atelys pour ${mission.productName}, destinée à des entreprises de type « ${mission.activity} » en Polynésie française.${price} ${angle} Ne jamais inventer de fait sur l’entreprise. Ne pas prétendre avoir audité son organisation si les données ne le prouvent pas. Email court, humain, spécifique et orienté conversation. Présenter ${mission.productName} seulement si cela découle des faits disponibles.`;
+}
+
+function buildFollowUpBrief(mission: AcquisitionMission, variant: string) {
+  const angle =
+    variant === 'B'
+      ? 'Rappeler le bénéfice concret en une phrase et demander si le sujet mérite d’être regardé maintenant.'
+      : 'Faire une relance très courte, sans répéter le premier email, avec une seule question simple.';
+  return `Relance de la campagne ${mission.productName} pour ${mission.activity}. ${angle} Ne pas insister si aucun signal n’existe. Ton professionnel, direct et respectueux.`;
 }
 
 function applyRecentHistory(
