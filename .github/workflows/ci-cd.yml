@@ -72,3 +72,126 @@ jobs:
         run: |
           chmod +x scripts/deploy-to-prod.sh scripts/deploy.sh
           ./scripts/deploy-to-prod.sh
+
+      - name: Aurel live production smoke report
+        if: contains(github.event.head_commit.message, '[aurel-live-smoke]')
+        run: |
+          echo "Waiting for Aurel Acquisition first production tick..."
+          sleep 75
+          ssh root@185.211.4.81 'bash -s' <<'REMOTE'
+          set -euo pipefail
+
+          echo "=== Aurel live smoke: acquisition progress ==="
+          for i in $(seq 1 12); do
+            SNAPSHOT="$(docker exec mailer-backend node - <<'NODE'
+          const Database = require('better-sqlite3');
+          const db = new Database('/app/data/mailer.sqlite', { readonly: true });
+          const job = db.prepare(`
+            SELECT id, status, listName, found, merged, skipped, searches, scrapes,
+                   message, createdAt, finishedAt, aurelProductName, aurelActivity,
+                   aurelCampaignIds, aurelPostProcessedAt
+            FROM discovery_jobs
+            WHERE listName LIKE 'Aurel acquisition · %'
+            ORDER BY createdAt DESC
+            LIMIT 1
+          `).get();
+          if (!job) {
+            console.log(JSON.stringify({ found: false }));
+          } else {
+            console.log(JSON.stringify({
+              found: true,
+              id: job.id,
+              status: job.status,
+              product: job.aurelProductName,
+              activity: job.aurelActivity,
+              prospectsFound: job.found,
+              merged: job.merged,
+              skipped: job.skipped,
+              searches: job.searches,
+              scrapes: job.scrapes,
+              message: job.message,
+              createdAt: job.createdAt,
+              finishedAt: job.finishedAt,
+              postProcessedAt: job.aurelPostProcessedAt,
+              hasCampaigns: Boolean(job.aurelCampaignIds),
+            }));
+          }
+          NODE
+          )"
+            echo "poll ${i}/12: ${SNAPSHOT}"
+            STATUS="$(printf '%s' "$SNAPSHOT" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).status||'none')}catch{console.log('parse-error')}})")"
+            if [ "$STATUS" = "done" ] || [ "$STATUS" = "error" ] || [ "$STATUS" = "cancelled" ]; then
+              break
+            fi
+            sleep 30
+          done
+
+          echo "=== Aurel live smoke: durable state ==="
+          docker exec mailer-backend node - <<'NODE'
+          const Database = require('better-sqlite3');
+          const db = new Database('/app/data/mailer.sqlite', { readonly: true });
+          const job = db.prepare(`
+            SELECT id, status, listName, found, merged, skipped, searches, scrapes,
+                   message, createdAt, finishedAt, aurelProductName, aurelActivity,
+                   aurelCampaignIds, aurelPostProcessedAt
+            FROM discovery_jobs
+            WHERE listName LIKE 'Aurel acquisition · %'
+            ORDER BY createdAt DESC
+            LIMIT 1
+          `).get();
+
+          const report = { latestAcquisition: null, campaigns: [], sendCounts: {}, recentAurelActions: [] };
+          if (job) {
+            let campaignIds = [];
+            try { campaignIds = JSON.parse(job.aurelCampaignIds || '[]'); } catch {}
+            report.latestAcquisition = {
+              id: job.id,
+              status: job.status,
+              listName: job.listName,
+              product: job.aurelProductName,
+              activity: job.aurelActivity,
+              found: job.found,
+              merged: job.merged,
+              skipped: job.skipped,
+              searches: job.searches,
+              scrapes: job.scrapes,
+              message: job.message,
+              createdAt: job.createdAt,
+              finishedAt: job.finishedAt,
+              postProcessedAt: job.aurelPostProcessedAt,
+              campaignCount: campaignIds.length,
+            };
+            if (campaignIds.length) {
+              const placeholders = campaignIds.map(() => '?').join(',');
+              report.campaigns = db.prepare(`
+                SELECT id, name, status, createdAt, updatedAt
+                FROM campaigns
+                WHERE id IN (${placeholders})
+                ORDER BY createdAt ASC
+              `).all(...campaignIds);
+              report.sendCounts = Object.fromEntries(
+                db.prepare(`
+                  SELECT campaignId, status, COUNT(*) AS count
+                  FROM sends
+                  WHERE campaignId IN (${placeholders})
+                  GROUP BY campaignId, status
+                `).all(...campaignIds).map(r => [`${r.campaignId}:${r.status}`, r.count])
+              );
+            }
+          }
+
+          report.recentAurelActions = db.prepare(`
+            SELECT actionType, status, summary, createdAt
+            FROM aurel_action_logs
+            ORDER BY createdAt DESC
+            LIMIT 20
+          `).all();
+
+          console.log(JSON.stringify(report, null, 2));
+          NODE
+
+          echo "=== Aurel live smoke: relevant backend logs ==="
+          docker logs --since 12m mailer-backend 2>&1 \
+            | grep -E 'Aurel acquisition|Acquisition tick|campaign|autopilot|Reply|follow-up' \
+            | tail -n 180 || true
+          REMOTE
