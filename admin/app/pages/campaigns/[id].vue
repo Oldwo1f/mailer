@@ -21,6 +21,7 @@ const senders = ref<Sender[]>([])
 const loading = ref(true)
 const generating = ref(false)
 const sending = ref(false)
+const approving = ref(false)
 const editDraft = ref<Draft | null>(null)
 const draftDialog = ref(false)
 const editForm = reactive({ subject: '', html: '', text: '' })
@@ -101,7 +102,7 @@ async function generate() {
     toast.add({
       severity: 'success',
       summary: 'Génération terminée',
-      detail: `${ok}/${res.results.length} brouillons`,
+      detail: `${ok}/${res.results.length} brouillons à relire puis approuver`,
       life: 4000,
     })
     await load()
@@ -140,7 +141,43 @@ async function saveDraft() {
   draftDialog.value = false
   editDraft.value = null
   await load()
-  toast.add({ severity: 'success', summary: 'Brouillon mis à jour', life: 2000 })
+  toast.add({
+    severity: 'success',
+    summary: 'Brouillon mis à jour',
+    detail: 'Une modification remet le brouillon en attente d’approbation.',
+    life: 3000,
+  })
+}
+
+async function approveDraft(d: Draft) {
+  await api(`drafts/${d.id}`, {
+    method: 'PATCH',
+    body: { status: 'approved' },
+  })
+  await load()
+}
+
+async function approveVisible() {
+  const ready = filteredDrafts.value.filter((d) => d.status === 'ready')
+  if (!ready.length) return
+  approving.value = true
+  try {
+    for (const draft of ready) {
+      await api(`drafts/${draft.id}`, {
+        method: 'PATCH',
+        body: { status: 'approved' },
+      })
+    }
+    await load()
+    toast.add({
+      severity: 'success',
+      summary: 'Brouillons approuvés',
+      detail: `${ready.length} brouillon(s) autorisé(s) à l’envoi`,
+      life: 3000,
+    })
+  } finally {
+    approving.value = false
+  }
 }
 
 async function skipDraft(d: Draft) {
@@ -152,12 +189,22 @@ async function skipDraft(d: Draft) {
 }
 
 function startSend() {
+  if (!draftStats.value.allReviewed || draftStats.value.approvedAll === 0) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Validation requise',
+      detail: 'Chaque brouillon doit être approuvé ou ignoré avant le lancement.',
+      life: 4000,
+    })
+    return
+  }
+
   const stepCount = sortedSteps.value.length
   confirm.require({
     message:
       stepCount > 1
-        ? `Lancer la séquence (${stepCount} emails) ? L’étape 1 part maintenant ; les suivantes partiront après leur délai.`
-        : 'Lancer l’envoi batch ? Les emails seront espacés (délai réglages) avec tracking ouvertures/clics.',
+        ? `Lancer la séquence (${stepCount} emails) ? Seuls les brouillons explicitement approuvés pourront partir.`
+        : 'Lancer l’envoi des brouillons approuvés ? Les emails seront espacés avec tracking ouvertures/clics.',
     header: 'Confirmer l’envoi',
     icon: 'pi pi-send',
     acceptLabel: 'Envoyer',
@@ -170,7 +217,7 @@ function startSend() {
         toast.add({
           severity: 'success',
           summary: 'Séquence démarrée',
-          detail: 'La file tourne en arrière-plan',
+          detail: 'La file n’enverra que les brouillons approuvés.',
           life: 4000,
         })
         await load()
@@ -218,7 +265,7 @@ function statusSeverity(s: string) {
     waiting: 'warn',
     sent: 'success',
     failed: 'danger',
-    ready: 'success',
+    ready: 'warn',
     approved: 'success',
     pending: 'secondary',
     error: 'danger',
@@ -229,14 +276,21 @@ function statusSeverity(s: string) {
 }
 
 const draftStats = computed(() => {
-  const drafts = filteredDrafts.value
+  const current = filteredDrafts.value
+  const all = campaign.value?.drafts || []
+  const approvedAll = all.filter((d) => d.status === 'approved').length
+  const reviewedAll = all.filter(
+    (d) => d.status === 'approved' || d.status === 'skipped',
+  ).length
   return {
-    total: drafts.length,
-    ready: drafts.filter((d) => d.status === 'ready' || d.status === 'approved').length,
-    errors: drafts.filter((d) => d.status === 'error').length,
-    allReady: (campaign.value?.drafts || []).filter(
-      (d) => d.status === 'ready' || d.status === 'approved',
-    ).length,
+    total: current.length,
+    ready: current.filter((d) => d.status === 'ready').length,
+    approved: current.filter((d) => d.status === 'approved').length,
+    errors: current.filter((d) => d.status === 'error').length,
+    approvedAll,
+    reviewedAll,
+    totalAll: all.length,
+    allReviewed: all.length > 0 && reviewedAll === all.length,
   }
 })
 
@@ -273,7 +327,8 @@ const waitingLabel = computed(() => {
         </div>
         <h1>{{ campaign.name }}</h1>
         <p>
-          {{ draftStats.allReady }}/{{ (campaign.drafts || []).length }} brouillons prêts
+          {{ draftStats.approvedAll }}/{{ draftStats.totalAll }} approuvés
+          <span v-if="draftStats.totalAll"> · {{ draftStats.reviewedAll }}/{{ draftStats.totalAll }} relus</span>
           <span v-if="sortedSteps.length > 1"> · {{ sortedSteps.length }} étapes</span>
           <span v-if="sendStats.sent">
             · {{ sendStats.sent }} envoyés · {{ sendStats.opened }} ouverts · {{ sendStats.clicked }} clics
@@ -294,7 +349,7 @@ const waitingLabel = computed(() => {
           label="Lancer la séquence"
           icon="pi pi-send"
           :loading="sending"
-          :disabled="!draftStats.allReady"
+          :disabled="!draftStats.allReviewed || draftStats.approvedAll === 0"
           @click="startSend"
         />
       </div>
@@ -373,6 +428,15 @@ const waitingLabel = computed(() => {
         class="row"
       >
         <strong style="margin-right: auto">Brouillons</strong>
+        <Button
+          v-if="draftStats.ready > 0"
+          label="Approuver l’étape"
+          icon="pi pi-check-circle"
+          size="small"
+          severity="success"
+          :loading="approving"
+          @click="approveVisible"
+        />
         <div v-if="sortedSteps.length > 1" class="row" style="gap: 0.35rem; flex-wrap: wrap">
           <Button
             v-for="step in sortedSteps"
@@ -398,10 +462,19 @@ const waitingLabel = computed(() => {
             <div v-if="data.error" class="muted" style="font-size: 0.75rem">{{ data.error }}</div>
           </template>
         </Column>
-        <Column header="" style="width: 9rem">
+        <Column header="" style="width: 12rem">
           <template #body="{ data }">
             <div class="row">
-              <Button icon="pi pi-eye" text rounded @click="openDraft(data)" />
+              <Button icon="pi pi-eye" text rounded v-tooltip.top="'Relire / éditer'" @click="openDraft(data)" />
+              <Button
+                v-if="data.status === 'ready'"
+                icon="pi pi-check"
+                text
+                rounded
+                severity="success"
+                v-tooltip.top="'Approuver pour l’envoi'"
+                @click="approveDraft(data)"
+              />
               <Button
                 icon="pi pi-ban"
                 text
@@ -477,7 +550,7 @@ const waitingLabel = computed(() => {
       </div>
       <template #footer>
         <Button label="Fermer" text @click="draftDialog = false" />
-        <Button label="Enregistrer" @click="saveDraft" />
+        <Button label="Enregistrer et revalider" @click="saveDraft" />
       </template>
     </Dialog>
   </div>

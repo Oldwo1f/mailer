@@ -19,7 +19,32 @@ async function bootstrap() {
       { path: 'u/:token', method: RequestMethod.POST },
     ],
   });
-  app.enableCors({ origin: true });
+
+  const production = process.env.NODE_ENV === 'production';
+  const defaultOrigin = production
+    ? 'https://mailing.aito-flow.com'
+    : 'http://localhost:3002';
+  const allowedOrigins = new Set(
+    (process.env.ADMIN_ORIGINS || defaultOrigin)
+      .split(',')
+      .map((v) => v.trim().replace(/\/$/, ''))
+      .filter(Boolean),
+  );
+
+  app.enableCors({
+    credentials: true,
+    origin(
+      origin: string | undefined,
+      callback: (error: Error | null, allow?: boolean) => void,
+    ) {
+      if (!origin || allowedOrigins.has(origin.replace(/\/$/, ''))) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error('Origin non autorisée par CORS'), false);
+    },
+  });
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
