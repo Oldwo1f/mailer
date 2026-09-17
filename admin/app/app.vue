@@ -49,6 +49,9 @@ async function logout() {
         <NuxtLink to="/acquisition" active-class="active">
           <i class="pi pi-compass" /> Aurel Acquisition
         </NuxtLink>
+        <NuxtLink to="/aurel-ops" active-class="active">
+          <i class="pi pi-sliders-h" /> Aurel Ops
+        </NuxtLink>
         <NuxtLink to="/product-markets" active-class="active">
           <i class="pi pi-globe" /> Product Markets
         </NuxtLink>
