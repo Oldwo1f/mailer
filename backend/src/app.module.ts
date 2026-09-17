@@ -49,6 +49,8 @@ import { AuthController } from './auth/auth.controller';
 import { AuthGuard } from './auth/auth.guard';
 import { AuthService } from './auth/auth.service';
 import { ProductMatcherService } from './product-matcher/product-matcher.service';
+import { DemoPersonalizerController } from './demo-personalizer/demo-personalizer.controller';
+import { DemoPersonalizerService } from './demo-personalizer/demo-personalizer.service';
 
 const entities = [
   Prospect,
@@ -87,6 +89,7 @@ const entities = [
     AuthController,
     HealthController,
     ProspectsController,
+    DemoPersonalizerController,
     ListsController,
     CampaignsController,
     DraftsController,
@@ -112,6 +115,7 @@ const entities = [
     ProspectsService,
     EnrichmentService,
     ProductMatcherService,
+    DemoPersonalizerService,
     ListsService,
     CampaignsService,
     MailRelayService,
