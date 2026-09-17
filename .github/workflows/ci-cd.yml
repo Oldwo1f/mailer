@@ -142,7 +142,7 @@ jobs:
           const job = db.prepare(`
             SELECT id, status, listName, found, merged, skipped, searches, scrapes,
                    message, createdAt, finishedAt, aurelProductName, aurelActivity,
-                   aurelCampaignIds, aurelPostProcessedAt
+                   aurelCampaignIds, aurelPostProcessedAt, results
             FROM discovery_jobs
             WHERE listName LIKE 'Aurel acquisition · %'
             ORDER BY createdAt DESC
@@ -151,6 +151,7 @@ jobs:
 
           const report = {
             latestAcquisition: null,
+            candidateStats: null,
             campaigns: [],
             sendCounts: {},
             recentAurelActions: [],
@@ -177,6 +178,65 @@ jobs:
               postProcessedAt: job.aurelPostProcessedAt,
               campaignCount: campaignIds.length,
             };
+
+            let resultEnvelope = { prospects: [] };
+            try { resultEnvelope = JSON.parse(job.results || '{"prospects":[]}'); } catch {}
+            const createdIds = [...new Set((resultEnvelope.prospects || []).filter(p => p && p.created).map(p => p.id).filter(Boolean))];
+            const stats = {
+              createdProspects: createdIds.length,
+              recommendationsPresent: 0,
+              highConfidence: 0,
+              score70Plus: 0,
+              highAnd70Plus: 0,
+              acceptedOrOverridden: 0,
+              unreviewed: 0,
+              noRecommendation: 0,
+              suppressed: 0,
+              byConfidence: {},
+              bySuggestedProduct: {},
+              byFinalProduct: {},
+              scoreBands: { '0-39': 0, '40-69': 0, '70-100': 0 },
+            };
+
+            if (createdIds.length) {
+              const placeholders = createdIds.map(() => '?').join(',');
+              const candidates = db.prepare(`
+                SELECT id, productRecommendation, leadStatus, marketId,
+                       unsubscribedAt, replyDetectedAt
+                FROM prospects
+                WHERE id IN (${placeholders})
+              `).all(...createdIds);
+
+              for (const row of candidates) {
+                if (row.unsubscribedAt || row.replyDetectedAt || ['won', 'lost'].includes(row.leadStatus)) {
+                  stats.suppressed += 1;
+                }
+                let rec = null;
+                try { rec = JSON.parse(row.productRecommendation || 'null'); } catch {}
+                if (!rec) {
+                  stats.noRecommendation += 1;
+                  continue;
+                }
+                stats.recommendationsPresent += 1;
+                const confidence = String(rec.confidence || 'unknown');
+                stats.byConfidence[confidence] = (stats.byConfidence[confidence] || 0) + 1;
+                const suggested = String(rec.suggestedProductId || 'none');
+                stats.bySuggestedProduct[suggested] = (stats.bySuggestedProduct[suggested] || 0) + 1;
+                const finalProduct = String(rec.productId || 'none');
+                stats.byFinalProduct[finalProduct] = (stats.byFinalProduct[finalProduct] || 0) + 1;
+                const score = Math.max(0, Math.min(100, Number(rec.score) || 0));
+                if (score < 40) stats.scoreBands['0-39'] += 1;
+                else if (score < 70) stats.scoreBands['40-69'] += 1;
+                else stats.scoreBands['70-100'] += 1;
+                if (confidence === 'high') stats.highConfidence += 1;
+                if (score >= 70) stats.score70Plus += 1;
+                if (confidence === 'high' && score >= 70) stats.highAnd70Plus += 1;
+                if (['accepted', 'overridden'].includes(rec.reviewState)) stats.acceptedOrOverridden += 1;
+                if (rec.reviewState === 'unreviewed') stats.unreviewed += 1;
+              }
+            }
+            report.candidateStats = stats;
+
             if (campaignIds.length) {
               const placeholders = campaignIds.map(() => '?').join(',');
               report.campaigns = db.prepare(`
@@ -203,9 +263,9 @@ jobs:
             LIMIT 20
           `).all();
 
-          const settingsRow = db.prepare(`SELECT values FROM app_settings WHERE id = 'default'`).get();
+          const settingsRow = db.prepare(`SELECT "values" AS settings_json FROM app_settings WHERE id = 'default'`).get();
           let settings = {};
-          try { settings = JSON.parse(settingsRow?.values || '{}'); } catch {}
+          try { settings = JSON.parse(settingsRow?.settings_json || '{}'); } catch {}
           const marketRows = db.prepare(`
             SELECT productId, marketId, enabled, autopilotEnabled, currency
             FROM product_market_settings
