@@ -122,13 +122,20 @@ jobs:
           docker exec -i mailer-backend node - <<'NODE'
           const Database = require('better-sqlite3');
           const db = new Database('/app/data/mailer.sqlite', { readonly: true });
-          const campaign = db.prepare(`
+          const findCampaign = () => db.prepare(`
             SELECT id, name, status, createdAt, updatedAt
             FROM campaigns
             WHERE name LIKE '[SMOKE TESTEURS]%'
             ORDER BY createdAt DESC
             LIMIT 1
           `).get();
+
+          let campaign = findCampaign();
+          for (let i = 0; campaign && campaign.status === 'sending' && i < 12; i++) {
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000);
+            campaign = findCampaign();
+          }
+
           const sends = campaign ? db.prepare(`
             SELECT status, COUNT(*) AS count
             FROM sends
