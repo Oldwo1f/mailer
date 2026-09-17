@@ -17,6 +17,10 @@ import { LlmService } from '../llm/llm.service';
 import { CampaignSendService } from '../mail/campaign-send.service';
 import { WebSearchService } from '../search/web-search.service';
 import { isPublicHttpUrl } from '../prospects/prospect.utils';
+import {
+  buildCommercialBrief,
+  buildCommercialContext,
+} from './commercial-context';
 
 export type StepInput = {
   name?: string;
@@ -352,13 +356,18 @@ export class CampaignsService implements OnModuleInit {
         });
         await this.drafts.save(draft);
         try {
+          const commercialContext = buildCommercialContext(prospect);
+          const effectiveBrief = buildCommercialBrief(
+            step.brief || campaign.brief,
+            commercialContext,
+          );
           const generated = await this.llm.generateEmail({
             company: prospect.company,
             emails: prospect.emails,
             contactName: prospect.contactName,
             profile: prospect.profile,
             enrichment: prospect.enrichment,
-            brief: step.brief || campaign.brief,
+            brief: effectiveBrief,
             tone: campaign.tone,
             emailType: campaign.emailType,
             language: campaign.language,
