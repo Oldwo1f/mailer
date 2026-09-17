@@ -38,6 +38,11 @@ export class CommercialPipelineController {
     return this.pipeline.productAnalytics();
   }
 
+  @Get('analytics/learning')
+  commercialLearning() {
+    return this.pipeline.commercialLearning();
+  }
+
   @Get('radar')
   radar() {
     return this.pipeline.radar();
