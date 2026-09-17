@@ -20,6 +20,7 @@ export function useApi() {
       return await $fetch<T>(url.toString(), {
         method: (options.method || 'GET') as 'GET',
         body: options.body as BodyInit | Record<string, unknown> | null | undefined,
+        credentials: 'include',
       })
     } catch (err: unknown) {
       const e = err as {
