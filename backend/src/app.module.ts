@@ -14,6 +14,7 @@ import { Click } from './entities/click.entity';
 import { AppSettings } from './entities/app-settings.entity';
 import { ProviderUsage } from './entities/provider-usage.entity';
 import { ProductMarketSetting } from './entities/product-market-setting.entity';
+import { AurelActionLog } from './entities/aurel-action-log.entity';
 import { SeedService } from './seed/seed.service';
 import { SettingsService } from './settings/settings.service';
 import { SettingsController } from './settings/settings.controller';
@@ -60,6 +61,10 @@ import { ProductMarketService } from './commercial/product-market.service';
 import { AurelAutopilotService } from './commercial/aurel-autopilot.service';
 import { AcquisitionController } from './commercial/acquisition.controller';
 import { AurelAcquisitionService } from './commercial/aurel-acquisition.service';
+import { AurelJournalService } from './commercial/aurel-journal.service';
+import { AurelDeferredFollowUpService } from './commercial/aurel-deferred-followup.service';
+import { AurelReportService } from './commercial/aurel-report.service';
+import { AurelCommandController } from './commercial/aurel-command.controller';
 
 const entities = [
   Prospect,
@@ -74,6 +79,7 @@ const entities = [
   ProviderUsage,
   DiscoveryJob,
   ProductMarketSetting,
+  AurelActionLog,
 ];
 
 @Module({
@@ -103,6 +109,7 @@ const entities = [
     CommercialPipelineController,
     ProductMarketController,
     AcquisitionController,
+    AurelCommandController,
     ReplyWebhookController,
     ListsController,
     CampaignsController,
@@ -131,6 +138,7 @@ const entities = [
     ProductMatcherService,
     DemoPersonalizerService,
     ProductMarketService,
+    AurelJournalService,
     CommercialPipelineService,
     ListsService,
     CampaignsService,
@@ -139,6 +147,8 @@ const entities = [
     CampaignSendService,
     AurelAutopilotService,
     AurelAcquisitionService,
+    AurelDeferredFollowUpService,
+    AurelReportService,
     TrackingService,
     SendsService,
     DiscoverService,
