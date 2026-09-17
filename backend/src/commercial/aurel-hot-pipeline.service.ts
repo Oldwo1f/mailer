@@ -59,14 +59,21 @@ export class AurelHotPipelineService
         }
 
         const delayDays = STAGE_DELAYS_DAYS[prospect.leadStatus];
-        if (
-          delayDays &&
-          !prospect.deferredFollowUpAt &&
-          !prospect.deferredFollowUpSentAt
-        ) {
-          const ageMs = now - new Date(prospect.updatedAt).getTime();
-          if (ageMs >= delayDays * 24 * 60 * 60 * 1000) {
+        if (delayDays && !prospect.deferredFollowUpAt) {
+          const updatedAt = new Date(prospect.updatedAt).getTime();
+          const previousSentAt = prospect.deferredFollowUpSentAt
+            ? new Date(prospect.deferredFollowUpSentAt).getTime()
+            : null;
+          const stageChangedSinceLastFollowUp =
+            previousSentAt == null || updatedAt > previousSentAt + 60_000;
+          const ageMs = now - updatedAt;
+
+          if (
+            stageChangedSinceLastFollowUp &&
+            ageMs >= delayDays * 24 * 60 * 60 * 1000
+          ) {
             prospect.deferredFollowUpAt = new Date();
+            prospect.deferredFollowUpSentAt = null;
             prospect.deferredFollowUpReason = `stage:${prospect.leadStatus}`;
             prospect.nextCommercialAction = stageAction(prospect.leadStatus);
             await this.prospects.save(prospect);
