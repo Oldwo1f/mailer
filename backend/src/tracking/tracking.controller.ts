@@ -9,6 +9,7 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { Public } from '../auth/public.decorator';
 import { TrackingService } from '../mail/campaign-send.service';
 import {
   renderUnsubscribePage,
@@ -20,6 +21,7 @@ const PIXEL_GIF = Buffer.from(
   'base64',
 );
 
+@Public()
 @Controller()
 export class TrackingController {
   constructor(private readonly tracking: TrackingService) {}
