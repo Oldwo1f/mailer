@@ -1,18 +1,30 @@
-# Mailer security hardening
+# Mailer security notes
 
-This branch introduces the first production security boundary before Atelys automation is extended.
+The Mailer keeps a pragmatic production security boundary without making day-to-day configuration painful for Atelys.
 
-## What changes
+## Current protections
 
 - Admin login backed by an opaque server-side session cookie.
 - Global default-deny NestJS guard for private routes.
-- Public exceptions limited to login, health, tracking and unsubscribe.
+- Public exceptions limited to login, health, tracking, unsubscribe and the authenticated-secret reply webhook.
 - Production CORS allowlist with credentials enabled.
-- Production provider/search/SMTP/mailserver credentials are read from server environment only.
 - `ready` drafts are reviewable but not sendable; only `approved` drafts enter the outbound queue.
 - Nuxt login/logout flow and explicit per-draft approval controls.
 
-## Production prerequisite before merge/deploy
+## API keys and provider credentials
+
+OpenAI, search providers, mail providers and SMTP credentials can be managed from the authenticated **Config** page and stored in the Mailer database. This is intentional so Adrien and Alexis can administer providers without editing the VPS environment for every key change.
+
+For these settings the resolution order is:
+
+1. value stored in the Mailer database;
+2. matching environment variable as fallback.
+
+Environment variables therefore remain useful for bootstrap/recovery, but are not required for every provider when the key is already configured in the application.
+
+Infrastructure-level secrets should stay server-managed when practical, especially `ADMIN_PASSWORD_SCRYPT` and `REPLY_WEBHOOK_SECRET`.
+
+## Production prerequisite
 
 Generate an admin password verifier and add it to `.env.prod` on the VPS:
 
@@ -27,7 +39,7 @@ ADMIN_PASSWORD_SCRYPT=...
 ADMIN_ORIGINS=https://mailing.aito-flow.com
 ```
 
-Do not commit `.env.prod` or the plaintext password.
+Do not commit `.env.prod` or plaintext passwords/secrets.
 
 ## Important
 
