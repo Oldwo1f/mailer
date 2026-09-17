@@ -7,6 +7,7 @@ import {
   statusAfterDetectedReply,
   statusAfterSuccessfulSend,
 } from './commercial.rules';
+import { buildProductAnalytics } from './commercial.analytics';
 
 @Injectable()
 export class CommercialPipelineService {
@@ -53,6 +54,11 @@ export class CommercialPipelineService {
       wonValueXpf,
       activePipelineValueXpf,
     };
+  }
+
+  async productAnalytics() {
+    const rows = await this.prospects.find();
+    return buildProductAnalytics(rows);
   }
 
   async updateProspect(
