@@ -73,6 +73,82 @@ jobs:
           chmod +x scripts/deploy-to-prod.sh scripts/deploy.sh
           ./scripts/deploy-to-prod.sh
 
+      - name: Aurel tester-list production smoke
+        if: contains(github.event.head_commit.message, '[aurel-tester-smoke]')
+        run: |
+          echo "Waiting for backend health after deploy..."
+          sleep 15
+          ssh root@185.211.4.81 'bash -s' <<'REMOTE'
+          set -euo pipefail
+
+          echo "=== Aurel tester smoke: preflight list detection ==="
+          docker exec -i mailer-backend node - <<'NODE'
+          const Database = require('better-sqlite3');
+          const db = new Database('/app/data/mailer.sqlite', { readonly: true });
+          const rows = db.prepare(`
+            SELECT l.id, l.name, l.slug, COUNT(m.prospectId) AS prospects
+            FROM prospect_lists l
+            LEFT JOIN prospect_list_members m ON m.listId = l.id
+            WHERE lower(l.name) LIKE '%test%' OR lower(l.slug) LIKE '%test%'
+            GROUP BY l.id, l.name, l.slug
+            ORDER BY l.name
+          `).all();
+          console.log(JSON.stringify(rows, null, 2));
+          NODE
+
+          echo "=== Aurel tester smoke: real campaign send ==="
+          docker exec -i mailer-backend node - <<'NODE'
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 210000);
+          fetch('http://127.0.0.1:3001/api/internal/smoke/testers', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: '{}',
+            signal: controller.signal,
+          }).then(async (r) => {
+            const text = await r.text();
+            console.log(text);
+            if (!r.ok) process.exit(1);
+            let body;
+            try { body = JSON.parse(text); } catch { process.exit(1); }
+            if (!body.ok || body.sent !== body.recipients) process.exit(1);
+          }).catch((err) => {
+            console.error(err);
+            process.exit(1);
+          }).finally(() => clearTimeout(timeout));
+          NODE
+
+          echo "=== Aurel tester smoke: final persisted result ==="
+          docker exec -i mailer-backend node - <<'NODE'
+          const Database = require('better-sqlite3');
+          const db = new Database('/app/data/mailer.sqlite', { readonly: true });
+          const campaign = db.prepare(`
+            SELECT id, name, status, createdAt, updatedAt
+            FROM campaigns
+            WHERE name LIKE '[SMOKE TESTEURS]%'
+            ORDER BY createdAt DESC
+            LIMIT 1
+          `).get();
+          const sends = campaign ? db.prepare(`
+            SELECT status, COUNT(*) AS count
+            FROM sends
+            WHERE campaignId = ?
+            GROUP BY status
+          `).all(campaign.id) : [];
+          const action = db.prepare(`
+            SELECT actionType, status, summary, createdAt
+            FROM aurel_action_logs
+            WHERE actionType IN ('tester_smoke_started','tester_smoke_passed','tester_smoke_failed')
+            ORDER BY createdAt DESC
+            LIMIT 1
+          `).get();
+          console.log(JSON.stringify({ campaign, sends, action }, null, 2));
+          if (!campaign || campaign.status !== 'sent') process.exit(1);
+          if (!sends.length || sends.some((row) => row.status !== 'sent')) process.exit(1);
+          if (!action || action.actionType !== 'tester_smoke_passed') process.exit(1);
+          NODE
+          REMOTE
+
       - name: Aurel live production smoke report
         if: contains(github.event.head_commit.message, '[aurel-live-smoke]')
         run: |
