@@ -7,6 +7,7 @@ import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import type { Prospect } from '~/types/mailer'
+import type { ProductRecommendation } from '~/types/product-matcher'
 
 type LeadStatus =
   | 'new'
@@ -20,6 +21,7 @@ type LeadStatus =
   | 'lost'
 
 type PipelineProspect = Prospect & {
+  productRecommendation?: ProductRecommendation | null
   leadStatus: LeadStatus
   dealValueXpf: number | null
   replyDetectedAt: string | null
