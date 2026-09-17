@@ -44,9 +44,15 @@ export class AurelDeferredFollowUpService
     this.running = true;
     let processed = 0;
     try {
-      const sender =
-        (await this.senders.findOne({ where: { isDefault: true } })) ||
-        (await this.senders.findOne({ order: { createdAt: 'ASC' } }));
+      const defaults = await this.senders.find({
+        where: { isDefault: true },
+        order: { createdAt: 'ASC' },
+        take: 1,
+      });
+      const anySender = defaults.length
+        ? defaults
+        : await this.senders.find({ order: { createdAt: 'ASC' }, take: 1 });
+      const sender = anySender[0] || null;
       if (!sender) return { processed: 0 };
 
       const rows = await this.prospects
