@@ -8,6 +8,10 @@ import {
   statusAfterSuccessfulSend,
 } from './commercial.rules';
 import { buildProductAnalytics } from './commercial.analytics';
+import {
+  buildAurelRadar,
+  type RadarSendMetrics,
+} from './aurel-radar';
 
 @Injectable()
 export class CommercialPipelineService {
@@ -59,6 +63,34 @@ export class CommercialPipelineService {
   async productAnalytics() {
     const rows = await this.prospects.find();
     return buildProductAnalytics(rows);
+  }
+
+  async radar() {
+    const [prospects, sends] = await Promise.all([
+      this.prospects.find(),
+      this.sends.find({ order: { createdAt: 'DESC' } }),
+    ]);
+
+    const metrics = new Map<string, RadarSendMetrics>();
+    for (const send of sends) {
+      const current = metrics.get(send.prospectId) || {
+        sent: 0,
+        opens: 0,
+        clicks: 0,
+        lastSentAt: null,
+        lastOpenedAt: null,
+      };
+      if (send.status === 'sent') current.sent += 1;
+      current.opens += Math.max(0, Number(send.openCount) || 0);
+      current.clicks += Math.max(0, Number(send.clickCount) || 0);
+      if (!current.lastSentAt && send.sentAt) current.lastSentAt = send.sentAt;
+      if (!current.lastOpenedAt && send.lastOpenedAt) {
+        current.lastOpenedAt = send.lastOpenedAt;
+      }
+      metrics.set(send.prospectId, current);
+    }
+
+    return buildAurelRadar(prospects, metrics);
   }
 
   async updateProspect(
