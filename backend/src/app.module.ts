@@ -13,6 +13,7 @@ import { Send } from './entities/send.entity';
 import { Click } from './entities/click.entity';
 import { AppSettings } from './entities/app-settings.entity';
 import { ProviderUsage } from './entities/provider-usage.entity';
+import { ProductMarketSetting } from './entities/product-market-setting.entity';
 import { SeedService } from './seed/seed.service';
 import { SettingsService } from './settings/settings.service';
 import { SettingsController } from './settings/settings.controller';
@@ -54,6 +55,8 @@ import { DemoPersonalizerService } from './demo-personalizer/demo-personalizer.s
 import { CommercialPipelineController } from './commercial/commercial-pipeline.controller';
 import { ReplyWebhookController } from './commercial/reply-webhook.controller';
 import { CommercialPipelineService } from './commercial/commercial-pipeline.service';
+import { ProductMarketController } from './commercial/product-market.controller';
+import { ProductMarketService } from './commercial/product-market.service';
 
 const entities = [
   Prospect,
@@ -67,6 +70,7 @@ const entities = [
   AppSettings,
   ProviderUsage,
   DiscoveryJob,
+  ProductMarketSetting,
 ];
 
 @Module({
@@ -94,6 +98,7 @@ const entities = [
     ProspectsController,
     DemoPersonalizerController,
     CommercialPipelineController,
+    ProductMarketController,
     ReplyWebhookController,
     ListsController,
     CampaignsController,
@@ -121,6 +126,7 @@ const entities = [
     EnrichmentService,
     ProductMatcherService,
     DemoPersonalizerService,
+    ProductMarketService,
     CommercialPipelineService,
     ListsService,
     CampaignsService,
