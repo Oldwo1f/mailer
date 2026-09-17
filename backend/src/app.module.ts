@@ -57,6 +57,7 @@ import { ReplyWebhookController } from './commercial/reply-webhook.controller';
 import { CommercialPipelineService } from './commercial/commercial-pipeline.service';
 import { ProductMarketController } from './commercial/product-market.controller';
 import { ProductMarketService } from './commercial/product-market.service';
+import { AurelAutopilotService } from './commercial/aurel-autopilot.service';
 
 const entities = [
   Prospect,
@@ -133,6 +134,7 @@ const entities = [
     MailRelayService,
     MailService,
     CampaignSendService,
+    AurelAutopilotService,
     TrackingService,
     SendsService,
     DiscoverService,
