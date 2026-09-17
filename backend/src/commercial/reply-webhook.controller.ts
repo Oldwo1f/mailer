@@ -25,6 +25,16 @@ class InboundReplyDto {
 
   @IsOptional()
   @IsString()
+  bodyText?: string | null;
+
+  /** RFC Message-ID from Gmail when available, used to preserve threading. */
+  @IsOptional()
+  @IsString()
+  replyToMessageId?: string | null;
+
+  /** Stable relay id used only for deduplication. */
+  @IsOptional()
+  @IsString()
   messageId?: string | null;
 }
 
@@ -52,6 +62,8 @@ export class ReplyWebhookController {
       fromEmail: dto.fromEmail,
       receivedAt: dto.receivedAt ? new Date(dto.receivedAt) : null,
       subject: dto.subject || null,
+      bodyText: dto.bodyText || null,
+      replyToMessageId: dto.replyToMessageId || null,
       messageId: dto.messageId || null,
     });
   }
