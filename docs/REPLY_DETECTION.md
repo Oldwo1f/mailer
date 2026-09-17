@@ -33,11 +33,58 @@ Exemple de corps JSON :
 
 Le secret doit être défini côté serveur dans `.env.prod` et comporter au moins 24 caractères. Il ne doit jamais être placé dans le frontend.
 
-## Raccordement à la boîte de réception
+## Raccordement Gmail recommandé pour Atelys
 
-L'endpoint est volontairement indépendant du fournisseur. Une règle/automation du fournisseur de réception (mailserver, webhook entrant, service de messagerie ou passerelle compatible) doit transmettre chaque email reçu à cet endpoint.
+Les emails envoyés à `contact@atelys-digital.com` arrivent dans la boîte Gmail utilisée par Atelys. Le chemin le plus léger est donc le relais Google Apps Script fourni dans :
 
-Le raccordement fournisseur est une étape de déploiement : le code Mailer sait déjà traiter l'événement, mais aucune réponse ne peut être détectée automatiquement tant qu'aucune boîte de réception ne pousse ses événements vers ce webhook.
+`integrations/gmail-reply-relay/Code.gs`
+
+Le relais :
+
+- cherche les messages adressés à l'adresse Atelys sur les 7 derniers jours ;
+- ignore les messages déjà relayés grâce à leur identifiant Gmail ;
+- n'envoie jamais le corps du message ;
+- transmet uniquement `fromEmail`, `receivedAt`, `subject` et un `messageId` idempotent ;
+- utilise `X-Reply-Webhook-Secret` ;
+- peut tourner automatiquement toutes les 5 minutes.
+
+### Installation
+
+1. Dans `.env.prod` du serveur Mailer, définir un secret aléatoire d'au moins 24 caractères :
+
+```env
+REPLY_WEBHOOK_SECRET=<secret-long-et-aleatoire>
+```
+
+2. Créer un projet Google Apps Script dans le compte Gmail qui reçoit les messages Atelys.
+
+3. Copier `integrations/gmail-reply-relay/Code.gs` dans le projet.
+
+4. Dans **Project Settings → Script properties**, ajouter :
+
+```text
+MAILER_REPLY_WEBHOOK_URL = https://mailing.aito-flow.com/api/replies/inbound
+MAILER_REPLY_WEBHOOK_SECRET = <le-meme-secret-que-sur-le-serveur>
+ATELYS_REPLY_TO_ADDRESS = contact@atelys-digital.com
+```
+
+5. Exécuter `testAtelysReplyRelayConfig()` et autoriser les accès Gmail / requêtes externes demandés par Google. Le test doit retourner un HTTP 2xx. L'adresse de test est volontairement inexistante côté Mailer et ne doit modifier aucun prospect.
+
+6. Exécuter une fois `installAtelysReplyRelay()`.
+
+Cette fonction supprime un éventuel ancien trigger du même nom, crée un trigger toutes les 5 minutes puis lance une première synchronisation.
+
+Pour arrêter l'intégration : `uninstallAtelysReplyRelay()`.
+
+Pour remettre à zéro uniquement la mémoire locale des IDs déjà relayés : `resetAtelysReplyRelayCursor()`.
+
+### Pourquoi ne pas stocker le corps des emails
+
+L'objectif de cette intégration est uniquement de détecter qu'une réponse existe et d'arrêter les relances. Le contenu complet du message reste dans Gmail. Cela réduit les données copiées dans Mailer et évite d'introduire un stockage de conversations inutile à cette phase.
+
+## Autres fournisseurs
+
+L'endpoint reste indépendant de Gmail. Un mailserver, un webhook entrant, un service de messagerie ou une autre passerelle peut envoyer le même contrat JSON vers `/api/replies/inbound` avec le secret partagé.
 
 ## Correspondance
 
