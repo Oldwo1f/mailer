@@ -52,6 +52,9 @@ async function logout() {
         <NuxtLink to="/demo-personalizer" active-class="active">
           <i class="pi pi-images" /> Demo Personalizer
         </NuxtLink>
+        <NuxtLink to="/pipeline" active-class="active">
+          <i class="pi pi-chart-line" /> Pipeline commercial
+        </NuxtLink>
         <NuxtLink to="/campaigns" active-class="active">
           <i class="pi pi-envelope" /> Campagnes
         </NuxtLink>
