@@ -83,6 +83,7 @@ ${input.scrapeMarkdown ? `Contenu site:\n${input.scrapeMarkdown}` : ''}`,
     emailType?: string;
     language: string;
     senderName: string;
+    senderEmail?: string | null;
     stepIndex?: number;
     stepCount?: number;
     previousBriefs?: string[];
@@ -99,12 +100,11 @@ ${input.scrapeMarkdown ? `Contenu site:\n${input.scrapeMarkdown}` : ''}`,
     const stepIndex = input.stepIndex ?? 0;
     const stepCount = input.stepCount ?? 1;
     const isFollowUp = stepIndex > 0;
-    const previousBlock =
-      input.previousBriefs?.length
-        ? input.previousBriefs
-            .map((b, i) => `Email ${i + 1} (déjà envoyé / prévu):\n${b}`)
-            .join('\n\n')
-        : '';
+    const previousBlock = input.previousBriefs?.length
+      ? input.previousBriefs
+          .map((b, i) => `Email ${i + 1} (déjà envoyé / prévu):\n${b}`)
+          .join('\n\n')
+      : '';
 
     const sequenceRules = isFollowUp
       ? `- Ceci est l'email ${stepIndex + 1}/${stepCount} d'une séquence (relance).
@@ -176,7 +176,7 @@ ${input.brief}`,
     const innerHtml = (parsed.html || parsed.text || '').trim();
     return {
       subject: parsed.subject.trim(),
-      html: wrapEmailHtml(innerHtml),
+      html: wrapEmailHtml(innerHtml, { senderEmail: input.senderEmail }),
       text: (parsed.text || stripHtml(innerHtml)).trim(),
     };
   }
@@ -274,7 +274,8 @@ ${input.searchSnippets}`,
     const model = await this.settings.getOpenaiModel();
     const emailType = resolveEmailType(input.emailType);
     const tone = resolveTone(input.tone);
-    const language = input.language === 'fr' || !input.language ? 'français' : input.language;
+    const language =
+      input.language === 'fr' || !input.language ? 'français' : input.language;
     const stepHint =
       input.stepCount && input.stepCount >= 2 && input.stepCount <= 5
         ? `Exactement ${input.stepCount} emails.`

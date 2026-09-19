@@ -83,7 +83,13 @@ export class CampaignsService implements OnModuleInit {
   async get(id: string) {
     const campaign = await this.campaigns.findOne({
       where: { id },
-      relations: ['sender', 'drafts', 'drafts.prospect', 'drafts.step', 'steps'],
+      relations: [
+        'sender',
+        'drafts',
+        'drafts.prospect',
+        'drafts.step',
+        'steps',
+      ],
     });
     if (!campaign) throw new NotFoundException('Campagne introuvable');
     if (campaign.steps?.length) {
@@ -102,10 +108,7 @@ export class CampaignsService implements OnModuleInit {
     if (!goal) {
       throw new BadRequestException('Brief général requis');
     }
-    if (
-      data.stepCount != null &&
-      (data.stepCount < 2 || data.stepCount > 5)
-    ) {
+    if (data.stepCount != null && (data.stepCount < 2 || data.stepCount > 5)) {
       throw new BadRequestException('stepCount doit être entre 2 et 5');
     }
 
@@ -375,6 +378,7 @@ export class CampaignsService implements OnModuleInit {
             emailType: campaign.emailType,
             language: campaign.language,
             senderName,
+            senderEmail: campaign.sender?.email,
             stepIndex: stepIdx,
             stepCount: steps.length,
             previousBriefs,
