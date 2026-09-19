@@ -53,13 +53,7 @@ function insertKynexyProspectingCard(content: string): string {
   <tr>
     <td style="padding:24px 24px 22px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif;text-align:left;">
       <div style="font-size:20px;line-height:1.25;font-weight:700;letter-spacing:-0.35px;color:#ffffff;">Du terrain au devis signé.</div>
-      <div style="margin-top:9px;font-size:14px;line-height:1.55;color:#b7c9d8;">Kynexy relie vos réservations, votre planning et vos documents pour que chaque chantier avance sans ressaisie.</div>
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;margin-top:17px;">
-        <tr>
-          <td style="padding:0 6px 6px 0;"><span style="display:inline-block;padding:7px 11px;border-radius:999px;background-color:#0d293c;color:#8eeeff;font-size:12px;line-height:1.2;font-weight:650;">Ponctuel ou entretien</span></td>
-          <td style="padding:0 0 6px 6px;text-align:right;"><span style="display:inline-block;padding:7px 11px;border-radius:999px;background-color:#10352f;color:#8df2c0;font-size:12px;line-height:1.2;font-weight:650;">Avec ou sans fournitures</span></td>
-        </tr>
-      </table>
+      <div style="margin-top:9px;font-size:14px;line-height:1.55;color:#b7c9d8;">Kynexy relie réservations, planning, chantiers et documents — pour vos interventions ponctuelles ou récurrentes, avec ou sans fournitures.</div>
     </td>
   </tr>
 </table>`;
