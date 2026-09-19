@@ -48,6 +48,20 @@ describe('email layout branding', () => {
     );
   });
 
+  it('adds the clickable Mahana card before the CTA when explicitly enabled', () => {
+    const html = wrapEmailHtml(content, {
+      senderEmail: 'contact@atelys-digital.com',
+      includeMahanaProspectingCard: true,
+    });
+
+    expect(html).toContain('mahana-prospection-hebergements.jpg');
+    expect(html).toContain('https://atelys-digital.com/mahana-decouverte/');
+    expect(html).toContain('Mahana réunit réservations');
+    expect(html.indexOf('mahana-prospection-hebergements.jpg')).toBeLessThan(
+      html.indexOf('Découvrir Kynexy'),
+    );
+  });
+
   it('does not wrap an email that is already laid out', () => {
     const wrapped = wrapEmailHtml(content, {
       senderEmail: 'contact@kynexy.fr',
