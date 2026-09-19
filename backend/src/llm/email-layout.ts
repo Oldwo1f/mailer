@@ -57,7 +57,8 @@ function insertMahanaProspectingCard(content: string): string {
   </tr>
 </table>`;
 
-  const ctaParagraph = /<p\b[^>]*>[\s\S]*?<a\b[\s\S]*?<\/a>[\s\S]*?<\/p>/i;
+  const ctaParagraph =
+    /<p\b[^>]*>(?:(?!<\/p>)[\s\S])*?<a\b(?:(?!<\/p>)[\s\S])*?<\/a>(?:(?!<\/p>)[\s\S])*?<\/p>/i;
   return ctaParagraph.test(content)
     ? content.replace(ctaParagraph, `${card}$&`)
     : `${content}${card}`;
@@ -76,7 +77,8 @@ function insertKynexyProspectingCard(content: string): string {
   </tr>
 </table>`;
 
-  const ctaParagraph = /<p\b[^>]*>[\s\S]*?<a\b[\s\S]*?<\/a>[\s\S]*?<\/p>/i;
+  const ctaParagraph =
+    /<p\b[^>]*>(?:(?!<\/p>)[\s\S])*?<a\b(?:(?!<\/p>)[\s\S])*?<\/a>(?:(?!<\/p>)[\s\S])*?<\/p>/i;
   return ctaParagraph.test(content)
     ? content.replace(ctaParagraph, `${card}$&`)
     : `${content}${card}`;
