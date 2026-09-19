@@ -254,6 +254,8 @@ export type SettingsPublic = {
   mailProvider: string
   mailProviders: MailProviderInfo[]
   resendConfigured: boolean
+  resendInboundAddress: string
+  replyForwardTo: string
   brevoConfigured: boolean
   sendgridConfigured: boolean
   mailjetConfigured: boolean

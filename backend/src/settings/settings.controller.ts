@@ -92,6 +92,18 @@ class UpdateSettingsDto {
 
   @IsOptional()
   @IsString()
+  resendWebhookSecret?: string | null;
+
+  @IsOptional()
+  @IsString()
+  resendInboundAddress?: string | null;
+
+  @IsOptional()
+  @IsString()
+  replyForwardTo?: string | null;
+
+  @IsOptional()
+  @IsString()
   brevoApiKey?: string | null;
 
   @IsOptional()

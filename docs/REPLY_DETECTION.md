@@ -86,6 +86,17 @@ L'objectif de cette intégration est uniquement de détecter qu'une réponse exi
 
 L'endpoint reste indépendant de Gmail. Un mailserver, un webhook entrant, un service de messagerie ou une autre passerelle peut envoyer le même contrat JSON vers `/api/replies/inbound` avec le secret partagé.
 
+## Réception native Resend (Kynexy)
+
+Le raccordement recommandé pour Kynexy utilise l'événement Resend `email.received` :
+
+1. activer la réception sur une adresse dédiée (par exemple `reponses@inbound.kynexy.fr`) ;
+2. créer dans Resend un webhook `email.received` vers `https://mailing.aito-flow.com/api/replies/resend` ;
+3. dans **Configuration → Réponses automatiques Resend**, enregistrer le secret `whsec_…`, l'adresse entrante exacte et `kynexy@proton.me` comme copie lisible ;
+4. utiliser l'adresse entrante comme `Reply-To` de l'expéditeur Kynexy.
+
+L'endpoint vérifie la signature Svix sur le corps brut, récupère le contenu via l'API Resend, rattache la réponse au dernier envoi, stoppe les relances, puis transmet une copie de lecture à Proton. Les événements destinés à une autre adresse sont ignorés.
+
 ## Correspondance
 
 Mailer cherche le dernier envoi `sent` dont `toEmail` correspond à `fromEmail`, puis rattache la réponse au prospect de cet envoi. Un `messageId` identique au dernier message reçu est traité comme doublon.

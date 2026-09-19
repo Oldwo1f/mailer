@@ -32,6 +32,9 @@ const form = reactive({
   mailgunDomain: '',
   openaiApiKey: '',
   resendApiKey: '',
+  resendWebhookSecret: '',
+  resendInboundAddress: '',
+  replyForwardTo: '',
   brevoApiKey: '',
   sendgridApiKey: '',
   mailjetApiKey: '',
@@ -71,7 +74,11 @@ const smtpSecrets = [
 ]
 
 /** All email secret fields (for save / clear loops) */
-const emailSecrets = [...tierSecrets, ...smtpSecrets]
+const emailSecrets = [
+  ...tierSecrets,
+  ...smtpSecrets,
+  { key: 'resendWebhookSecret' as const, label: 'Webhook Resend', hint: 'whsec_…' },
+]
 
 const TIER_IDS = new Set(['resend', 'brevo', 'sendgrid', 'mailjet', 'mailgun'])
 
@@ -192,6 +199,8 @@ async function load() {
     form.mailFrom = settings.value.mailFrom || ''
     form.mailFromName = settings.value.mailFromName || ''
     form.mailgunDomain = settings.value.mailgunDomain || ''
+    form.resendInboundAddress = settings.value.resendInboundAddress || ''
+    form.replyForwardTo = settings.value.replyForwardTo || ''
   }
 }
 
@@ -209,6 +218,8 @@ async function save() {
       mailFrom: form.mailFrom || null,
       mailFromName: form.mailFromName || null,
       mailgunDomain: form.mailgunDomain || null,
+      resendInboundAddress: form.resendInboundAddress || null,
+      replyForwardTo: form.replyForwardTo || null,
     }
     if (form.openaiApiKey.trim()) body.openaiApiKey = form.openaiApiKey.trim()
     for (const { key } of emailSecrets) {
@@ -548,6 +559,61 @@ onMounted(load)
         :outlined="form.mailProvider !== 'smtp'"
         @click="selectMailProvider('smtp')"
       />
+    </div>
+
+    <div class="card stack">
+      <div>
+        <h2 style="margin: 0; font-size: 1.05rem">3 · Réponses automatiques Resend</h2>
+        <p class="muted" style="margin: 0.35rem 0 0">
+          Aurel reçoit les réponses, met le Pipeline à jour et stoppe les relances.
+          Une copie peut rester visible dans Proton.
+        </p>
+      </div>
+      <div class="form-grid">
+        <div>
+          <label class="field-label">
+            Secret du webhook Resend
+            <Tag
+              v-if="secretConfigured('resendWebhookSecret')"
+              value="configuré"
+              severity="success"
+              style="margin-left: 0.35rem"
+            />
+          </label>
+          <Password
+            v-model="form.resendWebhookSecret"
+            :feedback="false"
+            toggle-mask
+            style="width: 100%"
+            input-style="width: 100%"
+            placeholder="whsec_… — laissez vide pour conserver"
+          />
+        </div>
+        <div>
+          <label class="field-label">Adresse de réception Resend</label>
+          <InputText
+            v-model="form.resendInboundAddress"
+            style="width: 100%"
+            placeholder="reponses@votre-sous-domaine"
+          />
+        </div>
+        <div>
+          <label class="field-label">Copie lisible dans Proton</label>
+          <InputText
+            v-model="form.replyForwardTo"
+            style="width: 100%"
+            placeholder="kynexy@proton.me"
+          />
+        </div>
+        <div>
+          <label class="field-label">URL à saisir dans Resend</label>
+          <InputText
+            :model-value="`${form.publicUrl || 'https://mailing.aito-flow.com'}/api/replies/resend`"
+            readonly
+            style="width: 100%"
+          />
+        </div>
+      </div>
     </div>
 
     <div class="card" style="padding: 0; overflow: hidden">

@@ -19,6 +19,7 @@ const SECRET_KEYS = [
   'exaApiKey',
   'mailserverApiKey',
   'resendApiKey',
+  'resendWebhookSecret',
   'brevoApiKey',
   'sendgridApiKey',
   'mailjetApiKey',
@@ -200,6 +201,8 @@ export class SettingsService {
         (values.mailFromName as string) ||
         this.config.get('MAIL_FROM_NAME') ||
         '',
+      resendInboundAddress: (values.resendInboundAddress as string) || '',
+      replyForwardTo: (values.replyForwardTo as string) || '',
       providers,
       secrets,
     };
@@ -309,6 +312,7 @@ export class SettingsService {
       exaApiKey: ['EXA_API_KEY'],
       mailserverApiKey: ['MAILSERVER_API_KEY'],
       resendApiKey: ['RESEND_API_KEY', 'RESEND__API_KEY'],
+      resendWebhookSecret: ['RESEND_WEBHOOK_SECRET'],
       brevoApiKey: ['BREVO_API_KEY', 'SENDINBLUE_API_KEY'],
       sendgridApiKey: ['SENDGRID_API_KEY'],
       mailjetApiKey: ['MAILJET_API_KEY'],

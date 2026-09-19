@@ -10,7 +10,9 @@ async function bootstrap() {
     join(__dirname, '..', 'data', 'mailer.sqlite');
   mkdirSync(dirname(dbPath), { recursive: true });
 
-  const app = await NestFactory.create(AppModule);
+  // Resend signs the exact request bytes. Keep the raw body available so the
+  // inbound webhook can be verified before any reply is processed.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   app.setGlobalPrefix('api', {
     exclude: [
       { path: 't/o/:token', method: RequestMethod.GET },
