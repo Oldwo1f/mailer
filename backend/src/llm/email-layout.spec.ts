@@ -31,6 +31,21 @@ describe('email layout branding', () => {
     expect(html).toContain('max-width:560px');
   });
 
+  it('adds the prospecting card before the CTA when explicitly enabled', () => {
+    const html = wrapEmailHtml(content, {
+      senderEmail: 'contact@kynexy.fr',
+      includeKynexyProspectingCard: true,
+    });
+
+    expect(html).toContain('kynexy-prospection-artisans.jpg');
+    expect(html).toContain('Du terrain au devis signé.');
+    expect(html).toContain('Ponctuel ou entretien');
+    expect(html).toContain('Avec ou sans fournitures');
+    expect(html.indexOf('kynexy-prospection-artisans.jpg')).toBeLessThan(
+      html.indexOf('Découvrir Kynexy'),
+    );
+  });
+
   it('does not wrap an email that is already laid out', () => {
     const wrapped = wrapEmailHtml(content, {
       senderEmail: 'contact@kynexy.fr',

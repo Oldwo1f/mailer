@@ -176,7 +176,10 @@ ${input.brief}`,
     const innerHtml = (parsed.html || parsed.text || '').trim();
     return {
       subject: parsed.subject.trim(),
-      html: wrapEmailHtml(innerHtml, { senderEmail: input.senderEmail }),
+      html: wrapEmailHtml(innerHtml, {
+        senderEmail: input.senderEmail,
+        includeKynexyProspectingCard: stepIndex === 0,
+      }),
       text: (parsed.text || stripHtml(innerHtml)).trim(),
     };
   }
