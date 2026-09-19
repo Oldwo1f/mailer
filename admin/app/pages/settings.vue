@@ -164,6 +164,10 @@ function selectMailProvider(id: string) {
   form.mailProvider = id
 }
 
+function updateSecret(key: string, value: string | null | undefined) {
+  ;(form as Record<string, unknown>)[key] = value ?? ''
+}
+
 function providerDocs(providerId: string) {
   return (
     settings.value?.mailProviders?.find((p) => p.id === providerId)?.docsUrl ||
@@ -459,12 +463,13 @@ onMounted(load)
             />
           </label>
           <Password
-            v-model="form[f.key]"
+            :model-value="form[f.key]"
             :feedback="false"
             toggle-mask
             style="width: 100%"
             input-style="width: 100%"
             :placeholder="f.hint"
+            @update:model-value="(value) => updateSecret(f.key, value)"
           />
         </div>
         <div>
@@ -526,12 +531,13 @@ onMounted(load)
             />
           </label>
           <Password
-            v-model="form[f.key]"
+            :model-value="form[f.key]"
             :feedback="false"
             toggle-mask
             style="width: 100%"
             input-style="width: 100%"
             :placeholder="f.hint"
+            @update:model-value="(value) => updateSecret(f.key, value)"
           />
         </div>
       </div>
@@ -646,12 +652,13 @@ onMounted(load)
             />
           </label>
           <Password
-            v-model="form[f.key]"
+            :model-value="form[f.key]"
             :feedback="false"
             toggle-mask
             style="width: 100%"
             input-style="width: 100%"
             :placeholder="f.hint"
+            @update:model-value="(value) => updateSecret(f.key, value)"
           />
         </div>
       </div>
