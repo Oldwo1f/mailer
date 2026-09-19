@@ -7,6 +7,7 @@ import Textarea from 'primevue/textarea'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Dialog from 'primevue/dialog'
+import Checkbox from 'primevue/checkbox'
 import type { CampaignDetail, Draft, Sender } from '~/types/mailer'
 import { CAMPAIGN_EMAIL_TYPES, CAMPAIGN_TONES } from '~/constants/campaign'
 
@@ -50,6 +51,9 @@ async function load() {
     if (campaign.value && !campaign.value.emailType) {
       campaign.value.emailType = 'classique'
     }
+    if (campaign.value && campaign.value.autopilotEnabled == null) {
+      campaign.value.autopilotEnabled = false
+    }
     if (!activeStepId.value && sortedSteps.value.length) {
       activeStepId.value = sortedSteps.value[0].id
     }
@@ -76,6 +80,7 @@ async function saveMeta() {
         tone: campaign.value.tone,
         emailType: campaign.value.emailType || 'classique',
         senderId: campaign.value.senderId,
+        autopilotEnabled: campaign.value.autopilotEnabled === true,
       },
     })
     toast.add({ severity: 'success', summary: 'Campagne enregistrée', life: 2000 })
@@ -401,6 +406,17 @@ const waitingLabel = computed(() => {
             style="width: 100%"
           />
         </div>
+      </div>
+      <div class="autopilot-control">
+        <label class="row" style="gap: 0.65rem; align-items: flex-start">
+          <Checkbox v-model="campaign.autopilotEnabled" binary input-id="campaign-autopilot" />
+          <span>
+            <strong>Autoriser l’Autopilot pour cette campagne</strong>
+            <span class="muted" style="display: block; margin-top: 0.2rem">
+              Désactivé par défaut. S’il est activé, Aurel peut approuver et envoyer automatiquement les brouillons admissibles selon les garde-fous commerciaux.
+            </span>
+          </span>
+        </label>
       </div>
       <div>
         <label class="field-label">Brief (étape 1 / global)</label>

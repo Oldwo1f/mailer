@@ -44,6 +44,13 @@ export class Campaign {
   @Column({ type: 'varchar', default: 'draft' })
   status: CampaignStatus;
 
+  /**
+   * Explicit per-campaign consent for autonomous approval and sending.
+   * Safe by default: manual review campaigns never enter Autopilot.
+   */
+  @Column({ default: false })
+  autopilotEnabled: boolean;
+
   @Column({ type: 'uuid', nullable: true })
   senderId: string | null;
 

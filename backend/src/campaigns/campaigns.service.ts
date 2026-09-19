@@ -163,6 +163,7 @@ export class CampaignsService implements OnModuleInit {
     emailType?: string;
     language?: string;
     senderId?: string;
+    autopilotEnabled?: boolean;
     prospectIds?: string[];
     listIds?: string[];
     steps?: StepInput[];
@@ -174,6 +175,7 @@ export class CampaignsService implements OnModuleInit {
       emailType: data.emailType || 'classique',
       language: data.language || 'fr',
       senderId: data.senderId || null,
+      autopilotEnabled: data.autopilotEnabled === true,
       prospectIds: data.prospectIds || null,
       listIds: data.listIds || null,
       status: 'draft',
@@ -212,6 +214,7 @@ export class CampaignsService implements OnModuleInit {
       emailType: string;
       language: string;
       senderId: string | null;
+      autopilotEnabled: boolean;
       prospectIds: string[] | null;
       listIds: string[] | null;
       steps: StepInput[];

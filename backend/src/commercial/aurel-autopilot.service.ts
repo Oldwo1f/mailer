@@ -20,7 +20,8 @@ const AUTOPILOT_V1_LAUNCH_AT = new Date('2026-09-17T09:30:00.000Z');
  *
  * Current scope:
  * - campaigns still need to be created/generated through the existing workflow;
- * - once drafts exist, no human approval is required for eligible PF products;
+ * - autonomous approval/sending requires explicit per-campaign opt-in;
+ * - once opted in and drafts exist, no human approval is required for eligible PF products;
  * - only reviewed Product Matcher recommendations can enter Autopilot;
  * - unsubscribe/reply/commercial-progress suppression remains authoritative;
  * - disabled product markets never send;
@@ -55,7 +56,7 @@ export class AurelAutopilotService implements OnModuleInit, OnModuleDestroy {
     this.running = true;
     try {
       const reviewCampaigns = await this.campaigns.find({
-        where: { status: 'review' },
+        where: { status: 'review', autopilotEnabled: true },
         relations: ['sender', 'steps'],
         order: { createdAt: 'ASC' },
       });
@@ -80,6 +81,7 @@ export class AurelAutopilotService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async processCampaign(campaign: Campaign) {
+    if (campaign.autopilotEnabled !== true) return;
     if (!campaign.senderId || !campaign.sender) return;
     if (this.sendService.isRunning(campaign.id)) return;
 

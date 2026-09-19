@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import {
   IsArray,
+  IsBoolean,
   IsInt,
   IsOptional,
   IsString,
@@ -87,6 +88,10 @@ class CreateCampaignDto {
   senderId?: string;
 
   @IsOptional()
+  @IsBoolean()
+  autopilotEnabled?: boolean;
+
+  @IsOptional()
   @IsArray()
   @IsUUID('4', { each: true })
   prospectIds?: string[];
@@ -127,6 +132,10 @@ class UpdateCampaignDto {
   @IsOptional()
   @IsUUID()
   senderId?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  autopilotEnabled?: boolean;
 
   @IsOptional()
   @IsArray()

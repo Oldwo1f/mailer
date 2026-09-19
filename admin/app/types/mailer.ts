@@ -80,6 +80,7 @@ export type Campaign = {
   emailType: string
   language: string
   status: string
+  autopilotEnabled: boolean
   senderId: string | null
   sender?: Sender | null
   prospectIds: string[] | null
