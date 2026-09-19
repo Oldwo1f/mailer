@@ -179,6 +179,8 @@ ${input.brief}`,
       html: wrapEmailHtml(innerHtml, {
         senderEmail: input.senderEmail,
         includeKynexyProspectingCard: stepIndex === 0,
+        includeMahanaProspectingCard:
+          stepIndex === 0 && /\bmahana\b/i.test(input.brief),
       }),
       text: (parsed.text || stripHtml(innerHtml)).trim(),
     };

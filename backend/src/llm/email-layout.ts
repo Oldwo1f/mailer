@@ -5,6 +5,7 @@ type EmailBrand = 'default' | 'kynexy';
 type EmailLayoutOptions = {
   senderEmail?: string | null;
   includeKynexyProspectingCard?: boolean;
+  includeMahanaProspectingCard?: boolean;
 };
 
 /**
@@ -30,19 +31,36 @@ export function wrapEmailHtml(
     return wrapKynexyEmail(kynexyContent);
   }
 
+  const defaultContent = options.includeMahanaProspectingCard
+    ? insertMahanaProspectingCard(withStyledLists)
+    : withStyledLists;
+
   return `<table class="${WRAPPER_MARKER}" role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;background-color:#f3f4f6;margin:0;padding:0;">
   <tr>
     <td align="center" style="padding:24px 12px;">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="560" style="border-collapse:collapse;width:100%;max-width:560px;background-color:#ffffff;border-radius:8px;">
         <tr>
           <td align="center" style="padding:32px 28px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.6;color:#1f2937;text-align:center;">
-            ${withStyledLists}
+            ${defaultContent}
           </td>
         </tr>
       </table>
     </td>
   </tr>
 </table>`;
+}
+
+function insertMahanaProspectingCard(content: string): string {
+  const card = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:separate;width:100%;margin:24px 0 26px;background-color:#f7fbf9;border:1px solid #cfe4de;border-radius:18px;overflow:hidden;">
+  <tr>
+    <td style="padding:0;line-height:0;"><a href="https://atelys-digital.com/mahana-decouverte/" style="display:block;margin:0;padding:0;background:transparent;border-radius:0;text-decoration:none;"><img src="https://mailing.aito-flow.com/mahana-prospection-hebergements.jpg" width="530" alt="Mahana réunit réservations, séjours, hébergements, devis et factures" style="display:block;width:100%;max-width:530px;height:auto;border:0;outline:none;text-decoration:none;"></a></td>
+  </tr>
+</table>`;
+
+  const ctaParagraph = /<p\b[^>]*>[\s\S]*?<a\b[\s\S]*?<\/a>[\s\S]*?<\/p>/i;
+  return ctaParagraph.test(content)
+    ? content.replace(ctaParagraph, `${card}$&`)
+    : `${content}${card}`;
 }
 
 function insertKynexyProspectingCard(content: string): string {
