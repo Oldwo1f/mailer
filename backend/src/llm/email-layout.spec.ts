@@ -39,8 +39,10 @@ describe('email layout branding', () => {
 
     expect(html).toContain('kynexy-prospection-artisans.jpg');
     expect(html).toContain('Du terrain au devis signé.');
-    expect(html).toContain('Ponctuel ou entretien');
-    expect(html).toContain('Avec ou sans fournitures');
+    expect(html).toContain('ponctuelles ou récurrentes');
+    expect(html).toContain('avec ou sans fournitures');
+    expect(html).not.toContain('border-radius:999px;background-color:#0d293c');
+    expect(html).not.toContain('border-radius:999px;background-color:#10352f');
     expect(html.indexOf('kynexy-prospection-artisans.jpg')).toBeLessThan(
       html.indexOf('Découvrir Kynexy'),
     );
