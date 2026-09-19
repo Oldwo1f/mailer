@@ -9,10 +9,7 @@ import {
   statusAfterSuccessfulSend,
 } from './commercial.rules';
 import { buildProductAnalytics } from './commercial.analytics';
-import {
-  buildAurelRadar,
-  type RadarSendMetrics,
-} from './aurel-radar';
+import { buildAurelRadar, type RadarSendMetrics } from './aurel-radar';
 import { ProductMarketService } from './product-market.service';
 import { classifyReply, type ReplyAnalysis } from './reply-intelligence';
 import { buildAutoReplyMessage } from './reply-autopilot';
@@ -115,7 +112,8 @@ export class CommercialPipelineService {
       current.opens += Math.max(0, Number(send.openCount) || 0);
       current.clicks += Math.max(0, Number(send.clickCount) || 0);
       if (!current.lastSentAt && send.sentAt) current.lastSentAt = send.sentAt;
-      if (!current.lastOpenedAt && send.lastOpenedAt) current.lastOpenedAt = send.lastOpenedAt;
+      if (!current.lastOpenedAt && send.lastOpenedAt)
+        current.lastOpenedAt = send.lastOpenedAt;
       metrics.set(send.prospectId, current);
     }
 
@@ -132,7 +130,9 @@ export class CommercialPipelineService {
           ? await this.productMarkets.get(productId, marketId)
           : null;
         const marketEligible = Boolean(market?.enabled);
-        const autopilotEnabled = Boolean(market?.enabled && market?.autopilotEnabled);
+        const autopilotEnabled = Boolean(
+          market?.enabled && market?.autopilotEnabled,
+        );
 
         const learningAdjustment = prospect
           ? learningAdjustmentForProspect(learning, prospect)
@@ -143,9 +143,16 @@ export class CommercialPipelineService {
               sourceLabel: null,
               reason: null,
             };
-        const canLearnOnPriority = ['new', 'contacted'].includes(item.leadStatus);
-        const appliedLearning = canLearnOnPriority ? learningAdjustment.points : 0;
-        const learnedScore = Math.max(0, Math.min(100, item.score + appliedLearning));
+        const canLearnOnPriority = ['new', 'contacted'].includes(
+          item.leadStatus,
+        );
+        const appliedLearning = canLearnOnPriority
+          ? learningAdjustment.points
+          : 0;
+        const learnedScore = Math.max(
+          0,
+          Math.min(100, item.score + appliedLearning),
+        );
         const learnedTier =
           item.tier === 'hot'
             ? item.tier
@@ -172,10 +179,12 @@ export class CommercialPipelineService {
             learningSource: learningAdjustment.source,
             learningSourceLabel: learningAdjustment.sourceLabel,
             learningReason: learningAdjustment.reason,
-            nextAction: 'Marché verrouillé pour ce produit — aucune prospection automatique.',
+            nextAction:
+              'Marché verrouillé pour ce produit — aucune prospection automatique.',
             demoEligible: false,
             demoMode: 'none' as const,
-            demoReason: 'Produit non activé commercialement sur ce marché : aucune énergie de démo.',
+            demoReason:
+              'Produit non activé commercialement sur ce marché : aucune énergie de démo.',
           };
         }
 
@@ -206,7 +215,9 @@ export class CommercialPipelineService {
       }),
     );
 
-    items.sort((a, b) => b.score - a.score || b.clicks - a.clicks || b.opens - a.opens);
+    items.sort(
+      (a, b) => b.score - a.score || b.clicks - a.clicks || b.opens - a.opens,
+    );
 
     return {
       ...radar,
@@ -222,10 +233,12 @@ export class CommercialPipelineService {
         autopilotEligible: items.filter((item) => item.autopilotEnabled).length,
         blockedByMarket: items.filter(
           (item) =>
-            Boolean(byId.get(item.prospectId)?.productRecommendation?.productId) &&
-            !item.marketEligible,
+            Boolean(
+              byId.get(item.prospectId)?.productRecommendation?.productId,
+            ) && !item.marketEligible,
         ).length,
-        learningAdjusted: items.filter((item) => item.learningAdjustment !== 0).length,
+        learningAdjusted: items.filter((item) => item.learningAdjustment !== 0)
+          .length,
       },
       items,
     };
@@ -285,7 +298,10 @@ export class CommercialPipelineService {
 
   private applyReplyStatus(prospect: Prospect, analysis: ReplyAnalysis) {
     const current = prospect.leadStatus || 'new';
-    if (analysis.intent === 'unsubscribe' || analysis.intent === 'not_interested') {
+    if (
+      analysis.intent === 'unsubscribe' ||
+      analysis.intent === 'not_interested'
+    ) {
       if (current !== 'won') prospect.leadStatus = 'lost';
       return;
     }
@@ -313,7 +329,9 @@ export class CommercialPipelineService {
       relations: ['prospect', 'campaign', 'campaign.sender'],
       order: { sentAt: 'DESC' },
     });
-    const match = sent.find((row) => row.toEmail.trim().toLowerCase() === email);
+    const match = sent.find(
+      (row) => row.toEmail.trim().toLowerCase() === email,
+    );
     if (!match?.prospect) return { ok: true, matched: false };
 
     const prospect = match.prospect;
@@ -343,7 +361,8 @@ export class CommercialPipelineService {
     prospect.lastReplyMessageId = input.messageId?.trim().slice(0, 500) || null;
     prospect.lastReplyIntent = analysis.intent;
     prospect.lastReplyConfidence = analysis.confidence;
-    prospect.lastReplySnippet = analysis.analyzedText?.trim().slice(0, 1200) || null;
+    prospect.lastReplySnippet =
+      analysis.analyzedText?.trim().slice(0, 1200) || null;
     prospect.nextCommercialAction = analysis.nextAction;
 
     if (analysis.intent === 'later' && analysis.followUpAt) {
@@ -385,6 +404,7 @@ export class CommercialPipelineService {
       .update(Send)
       .set({ status: 'skipped', error: 'Réponse détectée — relance stoppée' })
       .where('prospectId = :prospectId', { prospectId: prospect.id })
+      .andWhere('campaignId = :campaignId', { campaignId: match.campaignId })
       .andWhere('status = :status', { status: 'queued' })
       .execute();
 
@@ -451,7 +471,9 @@ export class CommercialPipelineService {
       }
     } catch (err) {
       autoReplyError = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`Reply Autopilot ${prospect.id}: ${autoReplyError.slice(0, 240)}`);
+      this.logger.warn(
+        `Reply Autopilot ${prospect.id}: ${autoReplyError.slice(0, 240)}`,
+      );
       await this.journal.log({
         actionType: 'auto_reply_failed',
         status: 'error',

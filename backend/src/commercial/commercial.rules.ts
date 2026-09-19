@@ -34,23 +34,33 @@ const STAGE_RANK: Record<LeadStatus, number> = {
   lost: 7,
 };
 
-export function shouldSuppressOutbound(input: {
-  leadStatus?: LeadStatus | null;
-  replyDetectedAt?: Date | string | null;
-  unsubscribedAt?: Date | string | null;
-}) {
+export function shouldSuppressOutbound(
+  input: {
+    leadStatus?: LeadStatus | null;
+    replyDetectedAt?: Date | string | null;
+    unsubscribedAt?: Date | string | null;
+  },
+  options: { followUp?: boolean } = { followUp: true },
+) {
   if (input.unsubscribedAt) return true;
+  if (!options.followUp) return input.leadStatus === 'lost';
   if (input.replyDetectedAt) return true;
-  return input.leadStatus ? STOP_FOLLOW_UP_STATUSES.has(input.leadStatus) : false;
+  return input.leadStatus
+    ? STOP_FOLLOW_UP_STATUSES.has(input.leadStatus)
+    : false;
 }
 
-export function statusAfterDetectedReply(current: LeadStatus | null | undefined): LeadStatus {
+export function statusAfterDetectedReply(
+  current: LeadStatus | null | undefined,
+): LeadStatus {
   if (!current) return 'replied';
   if (current === 'lost' || current === 'won') return current;
   return STAGE_RANK[current] >= STAGE_RANK.replied ? current : 'replied';
 }
 
-export function statusAfterSuccessfulSend(current: LeadStatus | null | undefined): LeadStatus {
+export function statusAfterSuccessfulSend(
+  current: LeadStatus | null | undefined,
+): LeadStatus {
   return !current || current === 'new' ? 'contacted' : current;
 }
 

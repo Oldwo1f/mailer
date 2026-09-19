@@ -37,10 +37,7 @@ export class AuthController {
   }
 
   @Post('logout')
-  logout(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const token = this.auth.readSessionToken(req.headers.cookie);
     this.auth.logout(token);
     res.clearCookie(SESSION_COOKIE, {
@@ -53,7 +50,18 @@ export class AuthController {
   }
 
   @Get('me')
-  me() {
+  me(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const current = this.auth.readSessionToken(req.headers.cookie);
+    const refreshed = this.auth.refreshSession(current);
+    if (refreshed) {
+      res.cookie(SESSION_COOKIE, refreshed, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: this.auth.cookieMaxAgeMs(),
+      });
+    }
     return { authenticated: true };
   }
 }

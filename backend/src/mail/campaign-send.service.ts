@@ -75,7 +75,7 @@ export class CampaignSendService {
 
     const campaign = await this.campaigns.findOne({
       where: { id: campaignId },
-      relations: ['sender'],
+      relations: ['sender', 'steps'],
     });
     if (!campaign) throw new Error('Campagne introuvable');
     if (!campaign.senderId) {
@@ -93,10 +93,15 @@ export class CampaignSendService {
       relations: ['prospect'],
     });
 
+    const currentStep = stepId
+      ? (campaign.steps || []).find((step) => step.id === stepId)
+      : null;
+    const followUp = Boolean(currentStep && currentStep.position > 0);
+
     const toSend = approvedDrafts.filter(
       (d) =>
         d.prospect &&
-        !shouldSuppressOutbound(d.prospect) &&
+        !shouldSuppressOutbound(d.prospect, { followUp }) &&
         d.subject &&
         d.html,
     );
@@ -169,6 +174,10 @@ export class CampaignSendService {
       }
       const sender = campaign.sender;
       const publicUrl = await this.settings.getPublicUrl();
+      const currentStep = stepId
+        ? await this.steps.findOne({ where: { id: stepId } })
+        : null;
+      const followUp = Boolean(currentStep && currentStep.position > 0);
 
       // eslint-disable-next-line no-constant-condition
       while (true) {
@@ -185,7 +194,10 @@ export class CampaignSendService {
         const next = await qb.getOne();
         if (!next) break;
 
-        if (next.prospect && shouldSuppressOutbound(next.prospect)) {
+        if (
+          next.prospect &&
+          shouldSuppressOutbound(next.prospect, { followUp })
+        ) {
           next.status = 'skipped';
           next.error = next.prospect.unsubscribedAt
             ? 'Désinscrit'
@@ -391,7 +403,11 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-function injectTracking(html: string, token: string, publicUrl: string): string {
+function injectTracking(
+  html: string,
+  token: string,
+  publicUrl: string,
+): string {
   const pixel = `<img src="${publicUrl}/t/o/${token}.gif" width="1" height="1" alt="" style="display:none;width:1px;height:1px;border:0;" />`;
   const unsub = `<p style="font-size:12px;color:#666;margin-top:24px;text-align:center;font-family:Arial,Helvetica,sans-serif;">Pour ne plus recevoir nos emails, <a href="${publicUrl}/u/${token}" style="color:#666;text-decoration:underline;">se désinscrire en un clic</a>.</p>`;
 

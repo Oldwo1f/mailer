@@ -9,6 +9,7 @@ function configurePassword(password = 'super-secret-password') {
   process.env.ADMIN_PASSWORD_SCRYPT = `${salt.toString('base64')}:${hash.toString('base64')}`;
   process.env.AUTH_IDLE_MINUTES = '30';
   process.env.AUTH_ABSOLUTE_HOURS = '12';
+  process.env.AUTH_SESSION_DAYS = '30';
   process.env.AUTH_LOGIN_MAX_ATTEMPTS = '5';
   process.env.AUTH_LOGIN_WINDOW_MINUTES = '15';
 }
@@ -45,6 +46,25 @@ describe('AuthService', () => {
 
     auth.logout(token);
     expect(auth.validateSession(token)).toBe(false);
+  });
+
+  it('keeps signed sessions valid across service restarts', async () => {
+    const first = new AuthService();
+    const token = await first.login('super-secret-password', 'test-client');
+    const restarted = new AuthService();
+
+    expect(restarted.validateSession(token)).toBe(true);
+  });
+
+  it('renews a valid session for another 30-day window', async () => {
+    const auth = new AuthService();
+    const token = await auth.login('super-secret-password', 'test-client');
+    const refreshed = auth.refreshSession(token);
+
+    expect(refreshed).toBeTruthy();
+    expect(refreshed).not.toBe(token);
+    expect(auth.validateSession(refreshed)).toBe(true);
+    expect(auth.cookieMaxAgeMs()).toBe(30 * 86_400_000);
   });
 
   it('extracts the session cookie without exposing other cookies', () => {

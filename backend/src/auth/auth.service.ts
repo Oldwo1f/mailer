@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import {
   createHash,
+  createHmac,
   randomBytes,
   scrypt as scryptCallback,
   timingSafeEqual,
@@ -19,8 +20,7 @@ const scryptAsync = promisify(scryptCallback);
 export const SESSION_COOKIE = 'mailer_session';
 
 type SessionRecord = {
-  absoluteExpiresAt: number;
-  idleExpiresAt: number;
+  expiresAt: number;
 };
 
 type FailureRecord = {
@@ -31,7 +31,7 @@ type FailureRecord = {
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
-  private readonly sessions = new Map<string, SessionRecord>();
+  private readonly revokedSessions = new Map<string, SessionRecord>();
   private readonly failures = new Map<string, FailureRecord>();
 
   async login(password: string, clientKey: string): Promise<string> {
@@ -45,41 +45,29 @@ export class AuthService {
     }
 
     this.failures.delete(clientKey);
-    const token = randomBytes(32).toString('base64url');
-    const now = Date.now();
-    const idleMs = this.idleMinutes() * 60_000;
-    const absoluteMs = this.absoluteHours() * 3_600_000;
-    this.sessions.set(this.hashToken(token), {
-      idleExpiresAt: now + idleMs,
-      absoluteExpiresAt: now + absoluteMs,
-    });
-    this.pruneSessions(now);
-    return token;
+    return this.createSessionToken();
   }
 
   validateSession(token: string | null | undefined): boolean {
     if (!token) return false;
-    const key = this.hashToken(token);
-    const session = this.sessions.get(key);
-    if (!session) return false;
-
     const now = Date.now();
-    if (session.absoluteExpiresAt <= now || session.idleExpiresAt <= now) {
-      this.sessions.delete(key);
-      return false;
-    }
+    this.pruneSessions(now);
+    const key = this.hashToken(token);
+    if (this.revokedSessions.has(key)) return false;
+    return this.verifySessionToken(token, now);
+  }
 
-    session.idleExpiresAt = Math.min(
-      session.absoluteExpiresAt,
-      now + this.idleMinutes() * 60_000,
-    );
-    this.sessions.set(key, session);
-    return true;
+  refreshSession(token: string | null | undefined): string | null {
+    if (!this.validateSession(token)) return null;
+    return this.createSessionToken();
   }
 
   logout(token: string | null | undefined) {
     if (!token) return;
-    this.sessions.delete(this.hashToken(token));
+    const expiresAt =
+      this.tokenExpiresAt(token) || Date.now() + this.cookieMaxAgeMs();
+    this.revokedSessions.set(this.hashToken(token), { expiresAt });
+    this.pruneSessions();
   }
 
   readSessionToken(cookieHeader: string | undefined): string | null {
@@ -100,7 +88,60 @@ export class AuthService {
   }
 
   cookieMaxAgeMs() {
-    return this.absoluteHours() * 3_600_000;
+    return this.sessionDays() * 86_400_000;
+  }
+
+  private createSessionToken() {
+    const issuedAt = Date.now();
+    const expiresAt = issuedAt + this.cookieMaxAgeMs();
+    const nonce = randomBytes(24).toString('base64url');
+    const payload = `v1.${issuedAt}.${expiresAt}.${nonce}`;
+    const signature = createHmac('sha256', this.sessionSecret())
+      .update(payload)
+      .digest('base64url');
+    return `${payload}.${signature}`;
+  }
+
+  private verifySessionToken(token: string, now = Date.now()) {
+    const parts = token.split('.');
+    if (parts.length !== 5 || parts[0] !== 'v1') return false;
+    const payload = parts.slice(0, 4).join('.');
+    const expected = createHmac('sha256', this.sessionSecret())
+      .update(payload)
+      .digest();
+    let supplied: Buffer;
+    try {
+      supplied = Buffer.from(parts[4], 'base64url');
+    } catch {
+      return false;
+    }
+    if (
+      supplied.length !== expected.length ||
+      !timingSafeEqual(supplied, expected)
+    ) {
+      return false;
+    }
+    const expiresAt = Number(parts[2]);
+    return Number.isFinite(expiresAt) && expiresAt > now;
+  }
+
+  private tokenExpiresAt(token: string) {
+    const parts = token.split('.');
+    if (parts.length !== 5 || parts[0] !== 'v1') return null;
+    const expiresAt = Number(parts[2]);
+    return Number.isFinite(expiresAt) ? expiresAt : null;
+  }
+
+  private sessionSecret() {
+    const explicit = process.env.AUTH_SESSION_SECRET?.trim();
+    if (explicit) return explicit;
+    const passwordHash = process.env.ADMIN_PASSWORD_SCRYPT?.trim();
+    if (!passwordHash) {
+      throw new ServiceUnavailableException('Secret de session indisponible');
+    }
+    return createHash('sha256')
+      .update(`aurel-session:${passwordHash}`)
+      .digest();
   }
 
   private async verifyPassword(password: string): Promise<boolean> {
@@ -128,8 +169,14 @@ export class AuthService {
     }
     if (salt.length < 16 || expected.length < 32) return false;
 
-    const derived = (await scryptAsync(password, salt, expected.length)) as Buffer;
-    return derived.length === expected.length && timingSafeEqual(derived, expected);
+    const derived = (await scryptAsync(
+      password,
+      salt,
+      expected.length,
+    )) as Buffer;
+    return (
+      derived.length === expected.length && timingSafeEqual(derived, expected)
+    );
   }
 
   private assertLoginAllowed(clientKey: string) {
@@ -167,9 +214,9 @@ export class AuthService {
   }
 
   private pruneSessions(now = Date.now()) {
-    for (const [key, session] of this.sessions) {
-      if (session.absoluteExpiresAt <= now || session.idleExpiresAt <= now) {
-        this.sessions.delete(key);
+    for (const [key, session] of this.revokedSessions) {
+      if (session.expiresAt <= now) {
+        this.revokedSessions.delete(key);
       }
     }
   }
@@ -179,12 +226,8 @@ export class AuthService {
     return Number.isFinite(value) && value > 0 ? value : fallback;
   }
 
-  private idleMinutes() {
-    return Math.max(5, this.envNumber('AUTH_IDLE_MINUTES', 30));
-  }
-
-  private absoluteHours() {
-    return Math.max(1, this.envNumber('AUTH_ABSOLUTE_HOURS', 12));
+  private sessionDays() {
+    return Math.max(1, this.envNumber('AUTH_SESSION_DAYS', 30));
   }
 
   private maxLoginAttempts() {
