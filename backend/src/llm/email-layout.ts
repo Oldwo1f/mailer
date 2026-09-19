@@ -49,7 +49,7 @@ function styleBodyLinks(html: string, brand: EmailBrand): string {
       .trim();
     const style =
       brand === 'kynexy'
-        ? 'display:inline-block;margin:18px 0 8px;padding:13px 24px;background-color:#2563eb;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;font-size:15px;line-height:1.2;box-shadow:0 6px 18px rgba(37,99,235,0.24);'
+        ? 'display:inline-block;margin:18px 0 8px;padding:12px 22px;background-color:#0071e3;color:#ffffff;text-decoration:none;border-radius:999px;font-weight:600;font-size:15px;line-height:1.2;'
         : 'display:inline-block;margin:16px 0 8px;padding:12px 24px;background-color:#0f766e;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:15px;';
     return `<a ${cleaned} style="${style}">`.replace(/<a\s+>/, '<a>');
   });
@@ -58,7 +58,7 @@ function styleBodyLinks(html: string, brand: EmailBrand): string {
 /** Keep lists readable: left-aligned inside the centered card. */
 function styleContent(html: string, brand: EmailBrand): string {
   const alignment = brand === 'kynexy' ? 'left' : 'center';
-  return html
+  const styled = html
     .replace(/<ul\b([^>]*)>/gi, (_m, attrs: string) => {
       const cleaned = String(attrs)
         .replace(/\sstyle\s*=\s*(["'])[\s\S]*?\1/gi, '')
@@ -86,6 +86,12 @@ function styleContent(html: string, brand: EmailBrand): string {
         ? `<p ${cleaned} style="${style}">`
         : `<p style="${style}">`;
     });
+  return brand === 'kynexy'
+    ? styled.replace(
+        /<strong\b([^>]*)>/gi,
+        '<strong$1 style="font-weight:650;color:#1d1d1f;">',
+      )
+    : styled;
 }
 
 function resolveBrand(senderEmail?: string | null): EmailBrand {
@@ -97,32 +103,37 @@ function resolveBrand(senderEmail?: string | null): EmailBrand {
 }
 
 function wrapKynexyEmail(content: string): string {
-  return `<table class="${WRAPPER_MARKER}" role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;background-color:#eef3fb;margin:0;padding:0;">
+  return `<table class="${WRAPPER_MARKER}" role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;background-color:#f5f5f7;margin:0;padding:0;">
   <tr>
-    <td align="center" style="padding:28px 12px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="border-collapse:separate;width:100%;max-width:600px;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 12px 34px rgba(15,23,42,0.12);">
+    <td align="center" style="padding:32px 12px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="border-collapse:separate;width:100%;max-width:600px;background-color:#ffffff;border-radius:24px;overflow:hidden;border:1px solid #e8e8ed;">
         <tr>
-          <td style="padding:0;background-color:#081a33;border-bottom:4px solid #2563eb;">
+          <td style="padding:0;background-color:#0b0b0f;">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;">
               <tr>
-                <td style="padding:25px 30px;font-family:Arial,Helvetica,sans-serif;">
-                  <div style="font-size:25px;line-height:1;font-weight:800;letter-spacing:3px;color:#ffffff;">KYNEXY</div>
-                  <div style="margin-top:8px;font-size:12px;line-height:1.4;font-weight:600;letter-spacing:0.8px;color:#8ec5ff;text-transform:uppercase;">Le centre de contrôle des entreprises de terrain</div>
-                  <div style="margin-top:16px;"><span style="display:inline-block;padding:7px 10px;border:1px solid #315783;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:0.7px;color:#dbeafe;">MOBILE · SIMPLE · CENTRALISÉ</span></div>
+                <td style="padding:30px 34px 29px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+                    <tr>
+                      <td valign="middle" style="padding-right:12px;"><span style="display:inline-block;width:34px;height:34px;line-height:34px;background-color:#0071e3;border-radius:10px;text-align:center;font-size:17px;font-weight:750;color:#ffffff;">K</span></td>
+                      <td valign="middle"><span style="font-size:22px;line-height:1;font-weight:700;letter-spacing:2.2px;color:#f5f5f7;">KYNEXY</span></td>
+                    </tr>
+                  </table>
+                  <div style="margin-top:22px;font-size:24px;line-height:1.18;font-weight:650;letter-spacing:-0.5px;color:#ffffff;">Votre activité. Enfin réunie.</div>
+                  <div style="margin-top:8px;font-size:14px;line-height:1.45;color:#a1a1a6;">Le centre de contrôle mobile conçu pour les entreprises de terrain.</div>
                 </td>
               </tr>
             </table>
           </td>
         </tr>
         <tr>
-          <td style="padding:34px 32px 26px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.65;color:#26364d;text-align:left;">
+          <td style="padding:38px 34px 30px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif;font-size:16px;line-height:1.65;letter-spacing:-0.1px;color:#424245;text-align:left;">
             ${content}
           </td>
         </tr>
         <tr>
-          <td style="padding:18px 30px 22px;background-color:#f8fafc;border-top:1px solid #e6edf7;font-family:Arial,Helvetica,sans-serif;text-align:center;">
-            <div style="font-size:12px;line-height:1.5;color:#64748b;">Kynexy · L’activité, l’équipe et les clients réunis au même endroit.</div>
-            <div style="margin-top:5px;font-size:12px;line-height:1.5;color:#94a3b8;">contact@kynexy.fr · kynexy.fr</div>
+          <td style="padding:22px 34px 25px;background-color:#fbfbfd;border-top:1px solid #eeeeF2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif;text-align:center;">
+            <div style="font-size:12px;line-height:1.5;color:#6e6e73;">Kynexy · L’activité, l’équipe et les clients au même endroit.</div>
+            <div style="margin-top:6px;font-size:12px;line-height:1.5;color:#86868b;">contact@kynexy.fr&nbsp;&nbsp;·&nbsp;&nbsp;kynexy.fr</div>
           </td>
         </tr>
       </table>

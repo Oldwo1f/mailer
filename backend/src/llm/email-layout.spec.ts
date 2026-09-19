@@ -10,9 +10,10 @@ describe('email layout branding', () => {
     });
 
     expect(html).toContain('KYNEXY');
-    expect(html).toContain('Le centre de contrôle des entreprises de terrain');
-    expect(html).toContain('background-color:#081a33');
-    expect(html).toContain('background-color:#2563eb');
+    expect(html).toContain('Votre activité. Enfin réunie.');
+    expect(html).toContain('Le centre de contrôle mobile conçu');
+    expect(html).toContain('background-color:#0b0b0f');
+    expect(html).toContain('background-color:#0071e3');
     expect(html).toContain('contact@kynexy.fr');
   });
 
