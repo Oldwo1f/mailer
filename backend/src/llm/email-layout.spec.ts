@@ -14,6 +14,10 @@ describe('email layout branding', () => {
     expect(html).toContain('Le centre de contrôle mobile conçu');
     expect(html).toContain('background-color:#0b0b0f');
     expect(html).toContain('background-color:#0071e3');
+    expect(html).toContain(
+      'https://kynexy.fr/assets/kynexy-brand-logo-official.png',
+    );
+    expect(html).toContain('alt="Kynexy"');
     expect(html).toContain('contact@kynexy.fr');
   });
 

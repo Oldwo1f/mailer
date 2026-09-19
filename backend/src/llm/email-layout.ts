@@ -114,7 +114,7 @@ function wrapKynexyEmail(content: string): string {
                 <td style="padding:30px 34px 29px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif;">
                   <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
                     <tr>
-                      <td valign="middle" style="padding-right:12px;"><span style="display:inline-block;width:34px;height:34px;line-height:34px;background-color:#0071e3;border-radius:10px;text-align:center;font-size:17px;font-weight:750;color:#ffffff;">K</span></td>
+                      <td valign="middle" style="padding-right:13px;"><img src="https://kynexy.fr/assets/kynexy-brand-logo-official.png" width="52" height="52" alt="Kynexy" style="display:block;width:52px;height:52px;border:0;border-radius:12px;outline:none;text-decoration:none;"></td>
                       <td valign="middle"><span style="font-size:22px;line-height:1;font-weight:700;letter-spacing:2.2px;color:#f5f5f7;">KYNEXY</span></td>
                     </tr>
                   </table>
