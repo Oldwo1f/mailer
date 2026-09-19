@@ -46,6 +46,9 @@ describe('email layout branding', () => {
     expect(html.indexOf('kynexy-prospection-artisans.jpg')).toBeLessThan(
       html.indexOf('Découvrir Kynexy'),
     );
+    expect(html.indexOf('Bonjour Adrien')).toBeLessThan(
+      html.indexOf('kynexy-prospection-artisans.jpg'),
+    );
   });
 
   it('adds the clickable Mahana card before the CTA when explicitly enabled', () => {
@@ -59,6 +62,9 @@ describe('email layout branding', () => {
     expect(html).toContain('Mahana réunit réservations');
     expect(html.indexOf('mahana-prospection-hebergements.jpg')).toBeLessThan(
       html.indexOf('Découvrir Kynexy'),
+    );
+    expect(html.indexOf('Bonjour Adrien')).toBeLessThan(
+      html.indexOf('mahana-prospection-hebergements.jpg'),
     );
   });
 
